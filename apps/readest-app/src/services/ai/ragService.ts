@@ -134,7 +134,9 @@ export async function indexBook(
     const embeddingModelName =
       settings.provider === 'ollama'
         ? settings.ollamaEmbeddingModel
-        : settings.aiGatewayEmbeddingModel || 'text-embedding-3-small';
+        : settings.provider === 'openai'
+          ? settings.openAiEmbeddingModel || 'text-embedding-3-small'
+          : settings.aiGatewayEmbeddingModel || 'text-embedding-3-small';
     aiLogger.embedding.start(embeddingModelName, allChunks.length);
 
     const texts = allChunks.map((c) => c.text);

@@ -21,7 +21,7 @@ export class OpenAIProvider implements AIProvider {
   constructor(settings: AISettings) {
     this.settings = settings;
     const rawBaseURL = settings.openAiBaseUrl || 'https://api.openai.com/v1';
-    const apiKey = settings.openAiApiKey || '';
+    const apiKey = (settings.openAiApiKey || '').trim();
 
     // Hardcoded internal DNS resolution for newapi
     if (rawBaseURL.includes(INTERNAL_API_DOMAIN)) {
@@ -43,14 +43,97 @@ export class OpenAIProvider implements AIProvider {
       this.effectiveBaseURL = rawBaseURL;
     }
 
+    // DEBUG: Log evaluated base URL
+    console.log('[OpenAIProvider] Raw Base URL:', rawBaseURL);
+    console.log('[OpenAIProvider] Effective Base URL:', this.effectiveBaseURL);
+
+    const extraHeaders = this.extraHeaders;
+
     this.openai = createOpenAI({
       baseURL: this.effectiveBaseURL,
       apiKey,
+      // We rely on fetchWrapper to inject headers, but passing them here helps SDK logic too
       headers: this.extraHeaders,
-      fetch: tauriFetch as unknown as typeof fetch,
     });
 
     aiLogger.provider.init('openai', settings.openAiModel || 'gpt-4o-mini');
+  }
+
+  async *streamChat(
+    messages: Array<{ role: string; content: string }>,
+    systemPrompt: string,
+    abortSignal?: AbortSignal,
+  ): AsyncGenerator<string> {
+    const url = this.effectiveBaseURL
+      .replace(/\/responses$/, '/chat/completions')
+      .endsWith('/chat/completions')
+      ? this.effectiveBaseURL
+      : this.effectiveBaseURL.replace(/\/+$/, '') + '/chat/completions';
+
+    console.log('[OpenAIProvider] streamChat to:', url);
+
+    const headers = new Headers({
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${this.settings.openAiApiKey}`,
+      ...this.extraHeaders,
+    });
+
+    const body = JSON.stringify({
+      model: this.settings.openAiModel || 'gpt-4o-mini',
+      messages: [{ role: 'system', content: systemPrompt }, ...messages],
+      stream: true,
+    });
+
+    console.log('[OpenAIProvider] Request Body:', body);
+
+    const response = await tauriFetch(url, {
+      method: 'POST',
+      headers,
+      body,
+      signal: abortSignal,
+    });
+
+    if (!response.ok) {
+      const error = await response.text();
+      throw new Error(`Chat API Error ${response.status}: ${error}`);
+    }
+
+    if (!response.body) throw new Error('No response body');
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() || ''; // Keep the incomplete line in buffer
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed.startsWith('data: ')) continue;
+
+          const data = trimmed.slice(6); // Remove 'data: '
+          if (data === '[DONE]') return;
+
+          try {
+            const json = JSON.parse(data);
+            const content = json.choices?.[0]?.delta?.content;
+            if (content) {
+              yield content;
+            }
+          } catch (e) {
+            console.warn('[OpenAIProvider] Parse error:', e);
+          }
+        }
+      }
+    } finally {
+      reader.releaseLock();
+    }
   }
 
   getModel(): LanguageModel {

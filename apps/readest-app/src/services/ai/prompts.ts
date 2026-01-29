@@ -6,15 +6,23 @@ export function buildSystemPrompt(
   chunks: ScoredChunk[],
   currentPage: number,
 ): string {
-  const contextSection =
-    chunks.length > 0
-      ? `\n\n<BOOK_PASSAGES page_limit="${currentPage}">\n${chunks
-          .map((c) => {
-            const header = c.chapterTitle || `Section ${c.sectionIndex + 1}`;
-            return `[${header}, Page ${c.pageNumber}]\n${c.text}`;
-          })
-          .join('\n\n')}\n</BOOK_PASSAGES>`
-      : '\n\n[No indexed content available for pages you have read yet.]';
+  if (chunks.length === 0) {
+    return `<SYSTEM>
+You are **Readest**, a helpful AI reading assistant.
+You are chatting with a user who is reading "${bookTitle}"${authorName ? ` by ${authorName}` : ''}.
+
+Since the book's content is not yet fully indexed or available for this session, you should answer the user's questions based on your **general knowledge** and training data.
+You are NOT restricted to specific book passages right now.
+Feel free to discuss the book generally, answer questions about other topics, or help the user with whatever they ask.
+</SYSTEM>`;
+  }
+
+  const contextSection = `\n\n<BOOK_PASSAGES page_limit="${currentPage}">\n${chunks
+    .map((c) => {
+      const header = c.chapterTitle || `Section ${c.sectionIndex + 1}`;
+      return `[${header}, Page ${c.pageNumber}]\n${c.text}`;
+    })
+    .join('\n\n')}\n</BOOK_PASSAGES>`;
 
   return `<SYSTEM>
 You are **Readest**, a warm and encouraging reading companion.
