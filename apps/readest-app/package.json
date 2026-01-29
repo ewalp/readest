@@ -55,6 +55,7 @@
     "build-check": "pnpm build && pnpm build-web && pnpm check:all"
   },
   "dependencies": {
+    "@ai-sdk/openai": "^3.0.21",
     "@ai-sdk/react": "^3.0.49",
     "@assistant-ui/react": "0.11.56",
     "@assistant-ui/react-ai-sdk": "1.1.21",

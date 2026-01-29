@@ -9,6 +9,9 @@ import { getAIProvider } from '@/services/ai/providers';
 import { DEFAULT_AI_SETTINGS, GATEWAY_MODELS, MODEL_PRICING } from '@/services/ai/constants';
 import type { AISettings, AIProviderName } from '@/services/ai/types';
 
+const DEFAULT_OPENAI_BASE_URL = 'http://newapi.prd.intenal:6363/v1';
+const DEFAULT_OPENAI_MODEL = 'gpt-4o-mini';
+
 type ConnectionStatus = 'idle' | 'testing' | 'success' | 'error';
 type CustomModelStatus = 'idle' | 'validating' | 'valid' | 'invalid';
 
@@ -75,6 +78,15 @@ const AIPanel: React.FC = () => {
   const [ollamaModels, setOllamaModels] = useState<string[]>([]);
   const [fetchingModels, setFetchingModels] = useState(false);
   const [gatewayKey, setGatewayKey] = useState(aiSettings.aiGatewayApiKey ?? '');
+
+  const [openAiBaseUrl, setOpenAiBaseUrl] = useState(
+    aiSettings.openAiBaseUrl || DEFAULT_OPENAI_BASE_URL,
+  );
+  const [openAiApiKey, setOpenAiApiKey] = useState(aiSettings.openAiApiKey || '');
+  const [openAiModel, setOpenAiModel] = useState(aiSettings.openAiModel || DEFAULT_OPENAI_MODEL);
+  const [openAiEmbeddingModel, setOpenAiEmbeddingModel] = useState(
+    aiSettings.openAiEmbeddingModel || '',
+  );
 
   const savedCustomModel = aiSettings.aiGatewayCustomModel ?? '';
   const savedModel = aiSettings.aiGatewayModel ?? DEFAULT_AI_SETTINGS.aiGatewayModel ?? '';
@@ -198,6 +210,34 @@ const AIPanel: React.FC = () => {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gatewayKey]);
 
+  useEffect(() => {
+    if (!isMounted.current) return;
+    if (openAiBaseUrl !== aiSettings.openAiBaseUrl) {
+      saveAiSetting('openAiBaseUrl', openAiBaseUrl);
+    }
+  }, [openAiBaseUrl]);
+
+  useEffect(() => {
+    if (!isMounted.current) return;
+    if (openAiApiKey !== aiSettings.openAiApiKey) {
+      saveAiSetting('openAiApiKey', openAiApiKey);
+    }
+  }, [openAiApiKey]);
+
+  useEffect(() => {
+    if (!isMounted.current) return;
+    if (openAiModel !== aiSettings.openAiModel) {
+      saveAiSetting('openAiModel', openAiModel);
+    }
+  }, [openAiModel]);
+
+  useEffect(() => {
+    if (!isMounted.current) return;
+    if (openAiEmbeddingModel !== aiSettings.openAiEmbeddingModel) {
+      saveAiSetting('openAiEmbeddingModel', openAiEmbeddingModel);
+    }
+  }, [openAiEmbeddingModel]);
+
   // Get the effective model ID to use (either selected or custom)
   const getEffectiveModelId = useCallback(() => {
     if (selectedModel === CUSTOM_MODEL_VALUE && customModelStatus === 'valid') {
@@ -288,7 +328,12 @@ const AIPanel: React.FC = () => {
         ollamaEmbeddingModel,
         aiGatewayApiKey: gatewayKey,
         aiGatewayModel: effectiveModel,
+        openAiBaseUrl,
+        openAiApiKey,
+        openAiModel,
+        openAiEmbeddingModel,
       };
+
       const aiProvider = getAIProvider(testSettings);
       const isHealthy = await aiProvider.healthCheck();
       if (isHealthy) {
@@ -298,7 +343,9 @@ const AIPanel: React.FC = () => {
         setErrorMessage(
           provider === 'ollama'
             ? _("Couldn't connect to Ollama. Is it running?")
-            : _('Invalid API key or connection failed'),
+            : provider === 'openai'
+              ? _('Connection failed. Check URL and Key.')
+              : _('Invalid API key or connection failed'),
         );
       }
     } catch (error) {
@@ -351,6 +398,17 @@ const AIPanel: React.FC = () => {
                 className='radio'
                 checked={provider === 'ai-gateway'}
                 onChange={() => setProvider('ai-gateway')}
+                disabled={!enabled}
+              />
+            </div>
+            <div className='config-item'>
+              <span>{_('OpenAI Compatible')}</span>
+              <input
+                type='radio'
+                name='ai-provider'
+                className='radio'
+                checked={provider === 'openai'}
+                onChange={() => setProvider('openai')}
                 disabled={!enabled}
               />
             </div>
@@ -515,6 +573,63 @@ const AIPanel: React.FC = () => {
                   )}
                 </div>
               )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {provider === 'openai' && (
+        <div className={clsx('w-full', disabledSection)}>
+          <h2 className='mb-2 font-medium'>{_('OpenAI Compatible Configuration')}</h2>
+          <div className='card border-base-200 bg-base-100 border shadow'>
+            <div className='divide-base-200 divide-y'>
+              <div className='config-item !h-auto flex-col !items-start gap-2 py-3'>
+                <span>{_('Base URL')}</span>
+                <input
+                  type='text'
+                  className='input input-bordered input-sm w-full'
+                  value={openAiBaseUrl}
+                  onChange={(e) => setOpenAiBaseUrl(e.target.value)}
+                  placeholder={DEFAULT_OPENAI_BASE_URL}
+                  disabled={!enabled}
+                />
+                <div className='text-base-content/60 text-xs'>
+                  {_('Example: http://newapi.prd.intenal:6363/v1')}
+                </div>
+              </div>
+              <div className='config-item !h-auto flex-col !items-start gap-2 py-3'>
+                <span>{_('API Key')}</span>
+                <input
+                  type='password'
+                  className='input input-bordered input-sm w-full'
+                  value={openAiApiKey}
+                  onChange={(e) => setOpenAiApiKey(e.target.value)}
+                  placeholder='sk-...'
+                  disabled={!enabled}
+                />
+              </div>
+              <div className='config-item !h-auto flex-col !items-start gap-2 py-3'>
+                <span>{_('Model')}</span>
+                <input
+                  type='text'
+                  className='input input-bordered input-sm w-full'
+                  value={openAiModel}
+                  onChange={(e) => setOpenAiModel(e.target.value)}
+                  placeholder={DEFAULT_OPENAI_MODEL}
+                  disabled={!enabled}
+                />
+              </div>
+              <div className='config-item !h-auto flex-col !items-start gap-2 py-3'>
+                <span>{_('Embedding Model (Optional)')}</span>
+                <input
+                  type='text'
+                  className='input input-bordered input-sm w-full'
+                  value={openAiEmbeddingModel}
+                  onChange={(e) => setOpenAiEmbeddingModel(e.target.value)}
+                  placeholder='text-embedding-3-small'
+                  disabled={!enabled}
+                />
+              </div>
             </div>
           </div>
         </div>
