@@ -288,7 +288,7 @@ const AssistantMessage: FC<AssistantMessageProps> = ({ sources = [] }) => {
     <MessagePrimitive.Root className='group/message animate-in fade-in slide-in-from-bottom-1 relative mx-auto mb-1 flex w-full flex-col pb-0.5 duration-200'>
       <div className='flex flex-col items-start'>
         <div className='w-full max-w-none'>
-          <div className='prose prose-xs text-base-content [&_*]:!text-base-content [&_a]:!text-primary [&_code]:!text-base-content select-text text-sm'>
+          <div className='prose prose-xs text-base-content [&_*]:!text-base-content [&_a]:!text-primary [&_code]:!text-base-content max-w-none select-text text-sm'>
             <MessagePrimitive.Parts components={{ Text: MarkdownText }} />
           </div>
         </div>

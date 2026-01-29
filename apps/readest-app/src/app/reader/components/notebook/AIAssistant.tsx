@@ -9,7 +9,7 @@ import {
   type ThreadHistoryAdapter,
 } from '@assistant-ui/react';
 
-import { useTranslation } from '@/hooks/useTranslation';
+// import { useTranslation } from '@/hooks/useTranslation';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { useReaderStore } from '@/store/readerStore';
@@ -222,7 +222,7 @@ const ThreadWrapper = ({
 };
 
 const AIAssistant = ({ bookKey }: AIAssistantProps) => {
-  const _ = useTranslation();
+  // const _ = useTranslation(); // Removed unused variable
   const { settings } = useSettingsStore();
   const { getBookData } = useBookDataStore();
   const { getProgress } = useReaderStore();

@@ -27,17 +27,16 @@ export function MermaidBlock({ code }: MermaidBlockProps) {
     let mounted = true;
 
     const renderDiagram = async () => {
-      if (!code) return;
+      // Don't try to render if code is too short
+      if (!code || code.length < 10) return;
 
       try {
-        setError(null);
-        // Clean up previous SVG potentially?
-        // Generate a unique ID for the diagram
-        const id = `mermaid-${Math.random().toString(36).slice(2, 9)}`;
+        // Validate syntax first to avoid "Syntax error" SVG
+        // mermaid has .parse since v10.
+        await mermaid.parse(code);
 
-        // mermaid.render returns { svg }.
-        // Note: The second arg (container) is not used for placement, just for sizing potentially?
-        // Actually usually we pass the code to render.
+        setError(null);
+        const id = `mermaid-${Math.random().toString(36).slice(2, 9)}`;
         const { svg: renderedSvg } = await mermaid.render(id, code);
 
         if (mounted) {
@@ -45,25 +44,28 @@ export function MermaidBlock({ code }: MermaidBlockProps) {
         }
       } catch (err) {
         if (mounted) {
-          console.error('Mermaid rendering failed:', err);
+          // console.error('Mermaid parsing/rendering failed:', err);
           setError((err as Error).message);
         }
       }
     };
 
-    renderDiagram();
+    const timeoutId = setTimeout(renderDiagram, 200); // Debounce to allow typing completion
 
     return () => {
       mounted = false;
+      clearTimeout(timeoutId);
     };
   }, [code]);
 
   if (error) {
+    // Fallback to displaying code if rendering fails (likely due to incomplete streaming)
     return (
-      <div className='border-error/20 bg-error/10 text-error rounded-md border p-4 text-sm'>
-        <p className='font-bold'>Failed to render diagram:</p>
-        <pre className='mt-2 whitespace-pre-wrap'>{error}</pre>
-        <pre className='border-error/20 mt-4 border-t pt-4 text-xs opacity-75'>{code}</pre>
+      <div className='border-base-300 bg-base-200 relative my-4 rounded-md border p-4'>
+        <pre className='overflow-x-auto font-mono text-xs opacity-80'>{code}</pre>
+        <div className='text-base-content/40 absolute right-2 top-2 text-[10px]'>
+          Rendering diagram...
+        </div>
       </div>
     );
   }
@@ -71,7 +73,7 @@ export function MermaidBlock({ code }: MermaidBlockProps) {
   return (
     <div
       ref={containerRef}
-      className='mermaid-diagram my-6 flex justify-center overflow-x-auto rounded-lg bg-white/5 p-4'
+      className='mermaid-diagram my-6 flex w-full justify-center overflow-x-auto rounded-lg bg-white/5 p-4'
       dangerouslySetInnerHTML={{ __html: svg }}
     />
   );
