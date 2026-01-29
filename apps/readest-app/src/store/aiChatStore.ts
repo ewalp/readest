@@ -52,8 +52,17 @@ export const useAIChatStore = create<AIChatState>((set, get) => ({
       return;
     }
     set({ isLoadingHistory: true });
+
+    // We need currentBookHash to query messages from the correct DB
+    const { currentBookHash } = get();
+    if (!currentBookHash) {
+      console.error('Cannot set active conversation: BookHash not set');
+      set({ activeConversationId: id, messages: [], isLoadingHistory: false });
+      return;
+    }
+
     try {
-      const messages = await aiStore.getMessages(id);
+      const messages = await aiStore.getMessages(currentBookHash, id);
       set({
         activeConversationId: id,
         messages,
@@ -86,17 +95,26 @@ export const useAIChatStore = create<AIChatState>((set, get) => ({
   },
 
   addMessage: async (message: Omit<AIMessage, 'id' | 'createdAt'>) => {
+    const { activeConversationId, currentBookHash } = get();
+
+    if (!currentBookHash) {
+      console.error('Cannot add message: BookHash not set');
+      return;
+    }
+
     const id = generateId();
     const fullMessage: AIMessage = {
       ...message,
       id,
       createdAt: Date.now(),
+      // conversationId is in ...message
     };
-    await aiStore.saveMessage(fullMessage);
+
+    // Pass bookHash to saveMessage
+    await aiStore.saveMessage(currentBookHash, fullMessage);
 
     // update conversation updatedAt
-    const { activeConversationId, currentBookHash } = get();
-    if (activeConversationId && currentBookHash) {
+    if (activeConversationId) {
       const conversations = get().conversations;
       const conv = conversations.find((c) => c.id === activeConversationId);
       if (conv) {
@@ -112,7 +130,10 @@ export const useAIChatStore = create<AIChatState>((set, get) => ({
 
   deleteConversation: async (id: string) => {
     const { currentBookHash, activeConversationId } = get();
-    await aiStore.deleteConversation(id);
+
+    if (!currentBookHash) return;
+
+    await aiStore.deleteConversation(currentBookHash, id);
 
     if (currentBookHash) {
       const conversations = await aiStore.getConversations(currentBookHash);
@@ -125,7 +146,10 @@ export const useAIChatStore = create<AIChatState>((set, get) => ({
 
   renameConversation: async (id: string, title: string) => {
     const { currentBookHash } = get();
-    await aiStore.updateConversationTitle(id, title);
+
+    if (!currentBookHash) return;
+
+    await aiStore.updateConversationTitle(currentBookHash, id, title);
 
     if (currentBookHash) {
       const conversations = await aiStore.getConversations(currentBookHash);

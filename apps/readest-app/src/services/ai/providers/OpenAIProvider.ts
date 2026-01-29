@@ -1,4 +1,4 @@
-import { createOpenAI } from '@ai-sdk/openai';
+// import { createOpenAI } from '@ai-sdk/openai'; // Removed
 import { fetch as tauriFetch } from '@tauri-apps/plugin-http';
 import type { LanguageModel, EmbeddingModel } from 'ai';
 import type { AIProvider, AISettings, AIProviderName } from '../types';
@@ -13,7 +13,7 @@ export class OpenAIProvider implements AIProvider {
   name = 'OpenAI Compatible';
   requiresAuth = false; // Bypass cloud auth since user provides key
 
-  private openai: ReturnType<typeof createOpenAI>;
+  // private openai: ReturnType<typeof createOpenAI>; // Removed
   private settings: AISettings;
   private effectiveBaseURL: string;
   private extraHeaders: Record<string, string> = {};
@@ -21,7 +21,6 @@ export class OpenAIProvider implements AIProvider {
   constructor(settings: AISettings) {
     this.settings = settings;
     const rawBaseURL = settings.openAiBaseUrl || 'https://api.openai.com/v1';
-    const apiKey = (settings.openAiApiKey || '').trim();
 
     // Hardcoded internal DNS resolution for newapi
     if (rawBaseURL.includes(INTERNAL_API_DOMAIN)) {
@@ -30,13 +29,10 @@ export class OpenAIProvider implements AIProvider {
       // so the server knows which virtual host to serve.
       // We assume the port is included in the raw URL or effectively handled.
       // Host header should typically be "hostname:port" if non-standard, or just hostname.
-      // We'll extract the authority from the raw URL to be accurate, or fallback to the domain.
-
       try {
         const urlObj = new URL(rawBaseURL);
-        this.extraHeaders['Host'] = urlObj.host; // includes port if present
+        this.extraHeaders['Host'] = urlObj.host;
       } catch (e) {
-        // Fallback if URL parsing fails (unlikely given it works in browser)
         this.extraHeaders['Host'] = INTERNAL_API_DOMAIN + ':6363';
       }
     } else {
@@ -46,15 +42,6 @@ export class OpenAIProvider implements AIProvider {
     // DEBUG: Log evaluated base URL
     console.log('[OpenAIProvider] Raw Base URL:', rawBaseURL);
     console.log('[OpenAIProvider] Effective Base URL:', this.effectiveBaseURL);
-
-    const extraHeaders = this.extraHeaders;
-
-    this.openai = createOpenAI({
-      baseURL: this.effectiveBaseURL,
-      apiKey,
-      // We rely on fetchWrapper to inject headers, but passing them here helps SDK logic too
-      headers: this.extraHeaders,
-    });
 
     aiLogger.provider.init('openai', settings.openAiModel || 'gpt-4o-mini');
   }
@@ -137,13 +124,77 @@ export class OpenAIProvider implements AIProvider {
   }
 
   getModel(): LanguageModel {
-    const modelId = this.settings.openAiModel || 'gpt-4o-mini';
-    return this.openai(modelId);
+    throw new Error('OpenAIProvider.getModel() is deprecated. Use streamChat() instead.');
   }
 
   getEmbeddingModel(): EmbeddingModel {
-    const embedModel = this.settings.openAiEmbeddingModel || 'text-embedding-3-small';
-    return this.openai.embedding(embedModel);
+    const modelId = this.settings.openAiEmbeddingModel || 'text-embedding-3-small';
+
+    return {
+      specificationVersion: 'v2',
+      provider: 'openai',
+      modelId,
+      maxEmbeddingsPerCall: 100,
+      supportsParallelCalls: true,
+      doEmbed: async ({
+        values,
+        abortSignal,
+      }: {
+        values: Array<string>;
+        abortSignal?: AbortSignal;
+      }) => {
+        const url = this.effectiveBaseURL
+          .replace(/\/responses$/, '/embeddings')
+          .endsWith('/embeddings')
+          ? this.effectiveBaseURL
+          : this.effectiveBaseURL.replace(/\/+$/, '') + '/embeddings';
+
+        // Prepare headers (copying logic from streamChat)
+        const headers = new Headers({
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${this.settings.openAiApiKey}`,
+          ...this.extraHeaders,
+        });
+
+        const body = JSON.stringify({
+          model: modelId,
+          input: values,
+          encoding_format: 'float',
+        });
+
+        console.log('[OpenAIProvider] Embedding request to:', url);
+
+        try {
+          const response = await tauriFetch(url, {
+            method: 'POST',
+            headers,
+            body,
+            signal: abortSignal,
+          });
+
+          if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`Embedding API Error ${response.status}: ${errorText}`);
+          }
+
+          const data = (await response.json()) as {
+            data: Array<{ embedding: number[]; index: number }>;
+            usage: { prompt_tokens: number; total_tokens: number };
+          };
+
+          // key: use correct sorting by index just in case
+          const sorted = data.data.sort((a, b) => a.index - b.index);
+
+          return {
+            embeddings: sorted.map((d) => d.embedding),
+            usage: { tokens: data.usage.total_tokens },
+          };
+        } catch (error) {
+          console.error('[OpenAIProvider] Embedding failed:', error);
+          throw error;
+        }
+      },
+    };
   }
 
   async isAvailable(): Promise<boolean> {

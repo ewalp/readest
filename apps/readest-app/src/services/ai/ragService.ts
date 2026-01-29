@@ -4,26 +4,8 @@ import { chunkSection, extractTextFromDocument } from './utils/chunker';
 import { withRetryAndTimeout, AI_TIMEOUTS, AI_RETRY_CONFIGS } from './utils/retry';
 import { getAIProvider } from './providers';
 import { aiLogger } from './logger';
+import { BookDoc } from '@/libs/document';
 import type { AISettings, TextChunk, ScoredChunk, EmbeddingProgress, BookIndexMeta } from './types';
-
-interface SectionItem {
-  id: string;
-  size: number;
-  linear: string;
-  createDocument: () => Promise<Document>;
-}
-
-interface TOCItem {
-  id: number;
-  label: string;
-  href?: string;
-}
-
-export interface BookDocType {
-  sections?: SectionItem[];
-  toc?: TOCItem[];
-  metadata?: { title?: string | { [key: string]: string }; author?: string | { name?: string } };
-}
 
 const indexingStates = new Map<string, IndexingState>();
 
@@ -33,24 +15,27 @@ export async function isBookIndexed(bookHash: string): Promise<boolean> {
   return indexed;
 }
 
-function extractTitle(metadata?: BookDocType['metadata']): string {
+function extractTitle(metadata?: BookDoc['metadata']): string {
   if (!metadata?.title) return 'Unknown Book';
   if (typeof metadata.title === 'string') return metadata.title;
-  return (
-    metadata.title['en'] ||
-    metadata.title['default'] ||
-    Object.values(metadata.title)[0] ||
-    'Unknown Book'
-  );
+  // Handle LanguageMap: it has keys like 'en', 'default' or others
+  // The type is defined in utils/book usually, assuming it allows string index
+  const titleObj = metadata.title as Record<string, string>;
+  return titleObj['en'] || titleObj['default'] || Object.values(titleObj)[0] || 'Unknown Book';
 }
 
-function extractAuthor(metadata?: BookDocType['metadata']): string {
+function extractAuthor(metadata?: BookDoc['metadata']): string {
   if (!metadata?.author) return 'Unknown Author';
   if (typeof metadata.author === 'string') return metadata.author;
-  return metadata.author.name || 'Unknown Author';
+
+  // Contributor interface has name: LanguageMap
+  const contributor = metadata.author as { name: Record<string, string> };
+  const nameMap = contributor.name;
+
+  return nameMap['en'] || nameMap['default'] || Object.values(nameMap)[0] || 'Unknown Author';
 }
 
-function getChapterTitle(toc: TOCItem[] | undefined, sectionIndex: number): string {
+function getChapterTitle(toc: BookDoc['toc'], sectionIndex: number): string {
   if (!toc || toc.length === 0) return `Section ${sectionIndex + 1}`;
   for (let i = toc.length - 1; i >= 0; i--) {
     if (toc[i]!.id <= sectionIndex) return toc[i]!.label;
@@ -59,10 +44,11 @@ function getChapterTitle(toc: TOCItem[] | undefined, sectionIndex: number): stri
 }
 
 export async function indexBook(
-  bookDoc: BookDocType,
+  bookDoc: BookDoc,
   bookHash: string,
   settings: AISettings,
   onProgress?: (progress: EmbeddingProgress) => void,
+  abortSignal?: AbortSignal,
 ): Promise<void> {
   const startTime = Date.now();
   const title = extractTitle(bookDoc.metadata);
@@ -96,11 +82,14 @@ export async function indexBook(
   indexingStates.set(bookHash, state);
 
   try {
+    if (abortSignal?.aborted) throw new Error('Indexing aborted');
+
     onProgress?.({ current: 0, total: 1, phase: 'chunking' });
     aiLogger.rag.indexProgress('chunking', 0, sections.length);
     const allChunks: TextChunk[] = [];
 
     for (let i = 0; i < sections.length; i++) {
+      if (abortSignal?.aborted) throw new Error('Indexing aborted');
       const section = sections[i]!;
       try {
         const doc = await section.createDocument();
@@ -130,6 +119,8 @@ export async function indexBook(
       return;
     }
 
+    if (abortSignal?.aborted) throw new Error('Indexing aborted');
+
     onProgress?.({ current: 0, total: allChunks.length, phase: 'embedding' });
     const embeddingModelName =
       settings.provider === 'ollama'
@@ -146,10 +137,13 @@ export async function indexBook(
           embedMany({
             model: provider.getEmbeddingModel(),
             values: texts,
+            abortSignal, // Pass the signal to embedMany
           }),
         AI_TIMEOUTS.EMBEDDING_BATCH,
         AI_RETRY_CONFIGS.EMBEDDING,
       );
+
+      if (abortSignal?.aborted) throw new Error('Indexing aborted');
 
       for (let i = 0; i < allChunks.length; i++) {
         allChunks[i]!.embedding = embeddings[i];
@@ -162,6 +156,8 @@ export async function indexBook(
       aiLogger.embedding.error('batch', (e as Error).message);
       throw e;
     }
+
+    if (abortSignal?.aborted) throw new Error('Indexing aborted');
 
     onProgress?.({ current: 0, total: 2, phase: 'indexing' });
     aiLogger.store.saveChunks(bookHash, allChunks.length);
@@ -191,6 +187,9 @@ export async function indexBook(
     state.status = 'error';
     state.error = (error as Error).message;
     aiLogger.rag.indexError(bookHash, (error as Error).message);
+    // clean up if aborted or error?
+    // Maybe we should clear the partial index or just leave it.
+    // For now, simple error reporting.
     throw error;
   }
 }

@@ -235,17 +235,121 @@ const AIAssistant = ({ bookKey }: AIAssistantProps) => {
   const currentPage = progress?.pageinfo?.current ?? 0;
   const aiSettings = settings?.aiSettings;
 
-  if (!aiSettings?.enabled) {
+  const abortControllerRef = useRef<AbortController | null>(null);
+  const [indexProgress, setIndexProgress] = useState<number>(0);
+  const [indexingPhase, setIndexingPhase] = useState<string>('');
+  const [isIndexing, setIsIndexing] = useState(false);
+  const [indexed, setIndexed] = useState(false);
+
+  // Check if book is already indexed on mount
+  useEffect(() => {
+    async function checkIndex() {
+      if (!bookHash || !settings.aiSettings?.enabled) return;
+      const { isBookIndexed } = await import('@/services/ai/ragService');
+      const isIndexed = await isBookIndexed(bookHash);
+      setIndexed(isIndexed);
+    }
+    checkIndex();
+  }, [bookHash, settings.aiSettings?.enabled]);
+
+  const performIndexing = useCallback(async () => {
+    if (!bookData?.bookDoc || isIndexing || indexed) return;
+
+    // Create new abort controller
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
+    setIsIndexing(true);
+    setIndexProgress(0);
+
+    try {
+      console.log('[AIAssistant] Starting indexing for', bookTitle);
+      const { indexBook } = await import('@/services/ai/ragService');
+
+      await indexBook(
+        bookData.bookDoc,
+        bookHash,
+        settings.aiSettings,
+        (progress) => {
+          setIndexProgress(Math.round((progress.current / progress.total) * 100));
+          setIndexingPhase(progress.phase);
+        },
+        controller.signal, // Pass signal
+      );
+
+      setIndexed(true);
+      setIsIndexing(false);
+      abortControllerRef.current = null;
+    } catch (e) {
+      if ((e as Error).message === 'Indexing aborted') {
+        console.log('[AIAssistant] Indexing cancelled');
+      } else {
+        console.error('[AIAssistant] Indexing failed', e);
+        alert('Indexing failed: ' + (e as Error).message);
+      }
+      setIsIndexing(false);
+      abortControllerRef.current = null;
+    }
+  }, [bookData, bookHash, bookTitle, settings.aiSettings, isIndexing, indexed]);
+
+  const cancelIndexing = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+      setIsIndexing(false);
+    }
+  }, []);
+
+  // Removed auto-indexing useEffect
+
+  if (!settings.aiSettings?.enabled) {
     return (
-      <div className='flex h-full items-center justify-center p-4'>
-        <p className='text-muted-foreground text-sm'>{_('Enable AI in Settings')}</p>
+      <div className='text-base-content/70 flex flex-col items-center justify-center p-8 text-center'>
+        <p>AI Assistant is disabled globally.</p>
+        <p className='text-sm'>Enable it in Settings {'>'} AI to use this feature.</p>
       </div>
     );
   }
 
-  // Directly render chat interface, using general knowledge only (no indexing)
   return (
-    <div className='flex h-full flex-col'>
+    <div className='bg-base-100 flex h-full flex-col'>
+      {/* Indexing Status / Control Banner */}
+      {(!indexed || isIndexing) && (
+        <div className='border-base-300 bg-base-200/50 flex items-center justify-between border-b px-4 py-2 text-sm'>
+          {!indexed && !isIndexing && (
+            <div className='flex w-full items-center justify-between'>
+              <span>Book not indexed for AI.</span>
+              <button
+                className='btn btn-primary btn-xs'
+                onClick={performIndexing}
+                disabled={!bookData?.bookDoc}
+              >
+                Start Indexing
+              </button>
+            </div>
+          )}
+
+          {isIndexing && (
+            <div className='flex w-full flex-col gap-2'>
+              <div className='flex items-center justify-between'>
+                <span>
+                  Indexing... {indexingPhase} ({indexProgress}%)
+                </span>
+                <button className='btn btn-ghost btn-xs text-error' onClick={cancelIndexing}>
+                  Cancel
+                </button>
+              </div>
+              <progress
+                className='progress progress-primary w-full'
+                value={indexProgress}
+                max='100'
+              ></progress>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Messages Area */}
       <div className='flex-1 overflow-hidden'>
         <AIAssistantChat
           aiSettings={aiSettings}
@@ -253,7 +357,13 @@ const AIAssistant = ({ bookKey }: AIAssistantProps) => {
           bookTitle={bookTitle}
           authorName={authorName}
           currentPage={currentPage}
-          onResetIndex={() => {}} // No-op since indexing is disabled
+          onResetIndex={async () => {
+            setIndexed(false);
+            // Verify it clears from store
+            const { clearBookIndex } = await import('@/services/ai/ragService');
+            await clearBookIndex(bookHash);
+            performIndexing();
+          }}
         />
       </div>
     </div>

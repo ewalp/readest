@@ -4,8 +4,8 @@ import { aiLogger } from '../logger';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const lunr = require('lunr') as typeof import('lunr');
 
-const DB_NAME = 'readest-ai';
-const DB_VERSION = 3;
+const DB_PREFIX = 'readest-ai-';
+const DB_VERSION = 1; // New isolated DBs start at version 1
 const CHUNKS_STORE = 'chunks';
 const META_STORE = 'bookMeta';
 const BM25_STORE = 'bm25Indices';
@@ -27,54 +27,63 @@ function cosineSimilarity(a: number[], b: number[]): number {
 }
 
 class AIStore {
-  private db: IDBDatabase | null = null;
+  // Map bookHash -> IDBDatabase
+  private dbs = new Map<string, IDBDatabase>();
+
   private chunkCache = new Map<string, TextChunk[]>();
   private indexCache = new Map<string, lunr.Index>();
   private metaCache = new Map<string, BookIndexMeta>();
   private conversationCache = new Map<string, AIConversation[]>();
 
   async recoverFromError(): Promise<void> {
-    if (this.db) {
+    for (const db of this.dbs.values()) {
       try {
-        this.db.close();
+        db.close();
       } catch {
-        // ignore close errors
+        // ignore
       }
-      this.db = null;
     }
+    this.dbs.clear();
     this.chunkCache.clear();
     this.indexCache.clear();
     this.metaCache.clear();
     this.conversationCache.clear();
-    await this.openDB();
+    // No single openDB call anymore, DBs are opened on demand
   }
 
-  private async openDB(): Promise<IDBDatabase> {
-    if (this.db) return this.db;
+  private async openDB(bookHash: string): Promise<IDBDatabase> {
+    if (this.dbs.has(bookHash)) return this.dbs.get(bookHash)!;
+
     return new Promise((resolve, reject) => {
-      const request = indexedDB.open(DB_NAME, DB_VERSION);
+      const dbName = `${DB_PREFIX}${bookHash}`;
+      const request = indexedDB.open(dbName, DB_VERSION);
+
       request.onerror = () => {
-        aiLogger.store.error('openDB', request.error?.message || 'Unknown error');
+        aiLogger.store.error(`openDB(${bookHash})`, request.error?.message || 'Unknown error');
         reject(request.error);
       };
+
       request.onsuccess = () => {
-        this.db = request.result;
-        resolve(this.db);
+        const db = request.result;
+        // Handle unexpected closures
+        db.onversionchange = () => {
+          db.close();
+          this.dbs.delete(bookHash);
+        };
+        db.onclose = () => {
+          this.dbs.delete(bookHash);
+        };
+        this.dbs.set(bookHash, db);
+        resolve(db);
       };
+
       request.onupgradeneeded = (event) => {
         const db = (event.target as IDBOpenDBRequest).result;
-        const oldVersion = event.oldVersion;
-
-        // force re-indexing on schema changes
-        if (oldVersion > 0 && oldVersion < 2) {
-          if (db.objectStoreNames.contains(CHUNKS_STORE)) db.deleteObjectStore(CHUNKS_STORE);
-          if (db.objectStoreNames.contains(META_STORE)) db.deleteObjectStore(META_STORE);
-          if (db.objectStoreNames.contains(BM25_STORE)) db.deleteObjectStore(BM25_STORE);
-          aiLogger.store.error('migration', 'Clearing old AI stores for re-indexing (v2)');
-        }
 
         if (!db.objectStoreNames.contains(CHUNKS_STORE)) {
           const store = db.createObjectStore(CHUNKS_STORE, { keyPath: 'id' });
+          // No need for global bookHash index anymore since DB is book-specific,
+          // but keeping it doesn't hurt logic that might rely on query by bookHash (though put() calls use it)
           store.createIndex('bookHash', 'bookHash', { unique: false });
         }
         if (!db.objectStoreNames.contains(META_STORE))
@@ -82,7 +91,6 @@ class AIStore {
         if (!db.objectStoreNames.contains(BM25_STORE))
           db.createObjectStore(BM25_STORE, { keyPath: 'bookHash' });
 
-        // v3: conversation history stores
         if (!db.objectStoreNames.contains(CONVERSATIONS_STORE)) {
           const convStore = db.createObjectStore(CONVERSATIONS_STORE, { keyPath: 'id' });
           convStore.createIndex('bookHash', 'bookHash', { unique: false });
@@ -96,7 +104,7 @@ class AIStore {
   }
 
   async saveMeta(meta: BookIndexMeta): Promise<void> {
-    const db = await this.openDB();
+    const db = await this.openDB(meta.bookHash);
     return new Promise((resolve, reject) => {
       const tx = db.transaction(META_STORE, 'readwrite');
       tx.objectStore(META_STORE).put(meta);
@@ -113,7 +121,7 @@ class AIStore {
 
   async getMeta(bookHash: string): Promise<BookIndexMeta | null> {
     if (this.metaCache.has(bookHash)) return this.metaCache.get(bookHash)!;
-    const db = await this.openDB();
+    const db = await this.openDB(bookHash);
     return new Promise((resolve, reject) => {
       const req = db.transaction(META_STORE, 'readonly').objectStore(META_STORE).get(bookHash);
       req.onsuccess = () => {
@@ -133,7 +141,7 @@ class AIStore {
   async saveChunks(chunks: TextChunk[]): Promise<void> {
     if (chunks.length === 0) return;
     const bookHash = chunks[0]!.bookHash;
-    const db = await this.openDB();
+    const db = await this.openDB(bookHash);
     return new Promise((resolve, reject) => {
       const tx = db.transaction(CHUNKS_STORE, 'readwrite');
       const store = tx.objectStore(CHUNKS_STORE);
@@ -154,13 +162,13 @@ class AIStore {
       aiLogger.store.loadChunks(bookHash, this.chunkCache.get(bookHash)!.length);
       return this.chunkCache.get(bookHash)!;
     }
-    const db = await this.openDB();
+    const db = await this.openDB(bookHash);
     return new Promise((resolve, reject) => {
       const req = db
         .transaction(CHUNKS_STORE, 'readonly')
         .objectStore(CHUNKS_STORE)
-        .index('bookHash')
-        .getAll(bookHash);
+        // We can just getAll() because the DB is exclusive to this book
+        .getAll();
       req.onsuccess = () => {
         const chunks = req.result as TextChunk[];
         this.chunkCache.set(bookHash, chunks);
@@ -181,7 +189,7 @@ class AIStore {
       for (const chunk of chunks)
         this.add({ id: chunk.id, text: chunk.text, chapterTitle: chunk.chapterTitle });
     });
-    const db = await this.openDB();
+    const db = await this.openDB(bookHash);
     return new Promise((resolve, reject) => {
       const tx = db.transaction(BM25_STORE, 'readwrite');
       tx.objectStore(BM25_STORE).put({ bookHash, serialized: JSON.stringify(index) });
@@ -198,7 +206,7 @@ class AIStore {
 
   private async loadBM25Index(bookHash: string): Promise<lunr.Index | null> {
     if (this.indexCache.has(bookHash)) return this.indexCache.get(bookHash)!;
-    const db = await this.openDB();
+    const db = await this.openDB(bookHash);
     return new Promise((resolve, reject) => {
       const req = db.transaction(BM25_STORE, 'readonly').objectStore(BM25_STORE).get(bookHash);
       req.onsuccess = () => {
@@ -304,19 +312,14 @@ class AIStore {
   }
 
   async clearBook(bookHash: string): Promise<void> {
-    const db = await this.openDB();
+    const db = await this.openDB(bookHash);
+    // When clearing, we nuke the stores in the book-specific DB
     return new Promise((resolve, reject) => {
       const tx = db.transaction([CHUNKS_STORE, META_STORE, BM25_STORE], 'readwrite');
-      const cursor = tx.objectStore(CHUNKS_STORE).index('bookHash').openCursor(bookHash);
-      cursor.onsuccess = (e) => {
-        const c = (e.target as IDBRequest<IDBCursorWithValue>).result;
-        if (c) {
-          c.delete();
-          c.continue();
-        }
-      };
-      tx.objectStore(META_STORE).delete(bookHash);
-      tx.objectStore(BM25_STORE).delete(bookHash);
+      tx.objectStore(CHUNKS_STORE).clear();
+      tx.objectStore(META_STORE).clear();
+      tx.objectStore(BM25_STORE).clear();
+
       tx.oncomplete = () => {
         this.chunkCache.delete(bookHash);
         this.indexCache.delete(bookHash);
@@ -330,7 +333,7 @@ class AIStore {
   // conversation persistence methods
 
   async saveConversation(conversation: AIConversation): Promise<void> {
-    const db = await this.openDB();
+    const db = await this.openDB(conversation.bookHash);
     return new Promise((resolve, reject) => {
       const tx = db.transaction(CONVERSATIONS_STORE, 'readwrite');
       tx.objectStore(CONVERSATIONS_STORE).put(conversation);
@@ -349,13 +352,13 @@ class AIStore {
     if (this.conversationCache.has(bookHash)) {
       return this.conversationCache.get(bookHash)!;
     }
-    const db = await this.openDB();
+    const db = await this.openDB(bookHash);
     return new Promise((resolve, reject) => {
       const req = db
         .transaction(CONVERSATIONS_STORE, 'readonly')
         .objectStore(CONVERSATIONS_STORE)
-        .index('bookHash')
-        .getAll(bookHash);
+        // No index needed since DB is isolated
+        .getAll();
       req.onsuccess = () => {
         const conversations = (req.result as AIConversation[]).sort(
           (a, b) => b.updatedAt - a.updatedAt,
@@ -367,8 +370,9 @@ class AIStore {
     });
   }
 
-  async deleteConversation(id: string): Promise<void> {
-    const db = await this.openDB();
+  // UPDATED: Now requires bookHash to know which DB to open
+  async deleteConversation(bookHash: string, id: string): Promise<void> {
+    const db = await this.openDB(bookHash);
     return new Promise((resolve, reject) => {
       const tx = db.transaction([CONVERSATIONS_STORE, MESSAGES_STORE], 'readwrite');
 
@@ -386,7 +390,7 @@ class AIStore {
       };
 
       tx.oncomplete = () => {
-        this.conversationCache.clear();
+        this.conversationCache.delete(bookHash);
         resolve();
       };
       tx.onerror = () => {
@@ -396,8 +400,9 @@ class AIStore {
     });
   }
 
-  async updateConversationTitle(id: string, title: string): Promise<void> {
-    const db = await this.openDB();
+  // UPDATED: Now requires bookHash
+  async updateConversationTitle(bookHash: string, id: string, title: string): Promise<void> {
+    const db = await this.openDB(bookHash);
     return new Promise((resolve, reject) => {
       const tx = db.transaction(CONVERSATIONS_STORE, 'readwrite');
       const store = tx.objectStore(CONVERSATIONS_STORE);
@@ -411,7 +416,7 @@ class AIStore {
         }
       };
       tx.oncomplete = () => {
-        this.conversationCache.clear();
+        this.conversationCache.delete(bookHash);
         resolve();
       };
       tx.onerror = () => {
@@ -421,8 +426,9 @@ class AIStore {
     });
   }
 
-  async saveMessage(message: AIMessage): Promise<void> {
-    const db = await this.openDB();
+  // UPDATED: Now requires bookHash
+  async saveMessage(bookHash: string, message: AIMessage): Promise<void> {
+    const db = await this.openDB(bookHash);
     return new Promise((resolve, reject) => {
       const tx = db.transaction(MESSAGES_STORE, 'readwrite');
       tx.objectStore(MESSAGES_STORE).put(message);
@@ -434,8 +440,9 @@ class AIStore {
     });
   }
 
-  async getMessages(conversationId: string): Promise<AIMessage[]> {
-    const db = await this.openDB();
+  // UPDATED: Now requires bookHash
+  async getMessages(bookHash: string, conversationId: string): Promise<AIMessage[]> {
+    const db = await this.openDB(bookHash);
     return new Promise((resolve, reject) => {
       const req = db
         .transaction(MESSAGES_STORE, 'readonly')
