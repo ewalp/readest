@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useRef, memo, useMemo } from 'react';
 import mermaid from 'mermaid';
+import { ZoomIn, ZoomOut } from 'lucide-react';
 
 // Initialize mermaid config
 mermaid.initialize({
@@ -22,9 +23,16 @@ interface MermaidBlockProps {
 export const MermaidBlock = memo(function MermaidBlock({ code }: MermaidBlockProps) {
   const [svg, setSvg] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [scale, setScale] = useState(1);
   const containerRef = useRef<HTMLDivElement>(null);
   // Stable ID for this component instance
   const diagramId = useMemo(() => `mermaid-${Math.random().toString(36).slice(2, 9)}`, []);
+
+  const handleZoom = (delta: number) => {
+    setScale((prev) => Math.min(Math.max(0.5, prev + delta), 3));
+  };
+
+  const resetZoom = () => setScale(1);
 
   useEffect(() => {
     let mounted = true;
@@ -79,10 +87,47 @@ export const MermaidBlock = memo(function MermaidBlock({ code }: MermaidBlockPro
   }
 
   return (
-    <div
-      ref={containerRef}
-      className='mermaid-diagram my-6 flex w-full justify-center overflow-x-auto rounded-lg bg-white p-4 text-black'
-      dangerouslySetInnerHTML={{ __html: svg }}
-    />
+    <div className='relative my-6 w-full rounded-lg border border-gray-200 bg-white'>
+      {/* Controls */}
+      <div className='absolute right-2 top-2 z-10 flex items-center gap-1 rounded-md border border-gray-200 bg-white p-1 shadow-sm'>
+        <button
+          onClick={() => handleZoom(-0.25)}
+          className='rounded p-1 text-gray-600 transition-colors hover:bg-gray-100'
+          title='Zoom Out'
+        >
+          <ZoomOut className='size-4' />
+        </button>
+        <button
+          onClick={resetZoom}
+          className='rounded p-1 text-gray-600 transition-colors hover:bg-gray-100'
+          title='Reset Zoom'
+        >
+          <span className='inline-block w-8 text-center text-xs font-medium'>
+            {Math.round(scale * 100)}%
+          </span>
+        </button>
+        <button
+          onClick={() => handleZoom(0.25)}
+          className='rounded p-1 text-gray-600 transition-colors hover:bg-gray-100'
+          title='Zoom In'
+        >
+          <ZoomIn className='size-4' />
+        </button>
+      </div>
+
+      {/* Scrollable Container */}
+      <div className='overflow-auto p-4' style={{ maxHeight: '600px' }}>
+        <div
+          ref={containerRef}
+          className='mermaid-diagram flex min-h-[100px] w-full origin-top-left justify-center text-black'
+          style={{
+            transform: `scale(${scale})`,
+            width: scale > 1 ? `${scale * 100}%` : '100%',
+            transformOrigin: 'top center',
+          }}
+          dangerouslySetInnerHTML={{ __html: svg }}
+        />
+      </div>
+    </div>
   );
 });
