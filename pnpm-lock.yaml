@@ -266,6 +266,9 @@ importers:
       marked:
         specifier: ^15.0.12
         version: 15.0.12
+      mermaid:
+        specifier: ^11.12.2
+        version: 11.12.2
       nanoid:
         specifier: ^5.1.6
         version: 5.1.6

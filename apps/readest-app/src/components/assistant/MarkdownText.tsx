@@ -14,6 +14,7 @@ import { CheckIcon, CopyIcon } from 'lucide-react';
 
 import { TooltipIconButton } from './TooltipIconButton';
 import { cn } from '@/utils/tailwind';
+import { MermaidBlock } from './MermaidBlock';
 
 const MarkdownTextImpl = () => {
   return (
@@ -119,6 +120,13 @@ const defaultComponents = memoizeMarkdownComponents({
   ),
   code: function Code({ className, ...props }) {
     const isCodeBlock = useIsMarkdownCodeBlock();
+
+    // Detect mermaid code blocks
+    if (isCodeBlock && /language-mermaid/.test(className || '')) {
+      const codeContent = props.children?.toString() || '';
+      return <MermaidBlock code={codeContent} />;
+    }
+
     return (
       <code
         className={cn(
