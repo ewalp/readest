@@ -36,11 +36,11 @@ const CodeHeader: FC<CodeHeaderProps> = ({ language, code }) => {
   };
 
   return (
-    <div className='bg-muted text-foreground mt-4 flex items-center justify-between gap-4 rounded-t-lg px-4 py-2 text-sm font-semibold'>
+    <div className='mt-4 flex items-center justify-between gap-4 rounded-t-lg border border-b-0 border-gray-200 bg-gray-100 px-4 py-2 text-sm font-semibold text-black'>
       <span className='lowercase [&>span]:text-xs'>{language}</span>
       <TooltipIconButton tooltip='Copy' onClick={onCopy}>
-        {!isCopied && <CopyIcon className='size-3' />}
-        {isCopied && <CheckIcon className='size-3' />}
+        {!isCopied && <CopyIcon className='size-3 text-gray-500 hover:text-black' />}
+        {isCopied && <CheckIcon className='size-3 text-green-600' />}
       </TooltipIconButton>
     </div>
   );
@@ -112,7 +112,7 @@ const defaultComponents = memoizeMarkdownComponents({
   pre: ({ className, ...props }) => (
     <pre
       className={cn(
-        'overflow-x-auto rounded-b-lg rounded-t-none bg-zinc-900 p-4 text-sm text-zinc-100',
+        'overflow-x-auto rounded-b-lg rounded-t-none border border-gray-200 bg-white p-4 text-sm text-black',
         className,
       )}
       {...props}
