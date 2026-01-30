@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useRef, memo, useMemo } from 'react';
 import mermaid from 'mermaid';
-import { ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
+import { ZoomIn, ZoomOut, Maximize2, RefreshCcw } from 'lucide-react';
 import { useMermaidStore } from '@/store/mermaidStore';
 
 // Initialize mermaid config
@@ -24,6 +24,7 @@ export const MermaidBlock = memo(function MermaidBlock({ code }: MermaidBlockPro
   const [svg, setSvg] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [scale, setScale] = useState(1);
+  const [retryCount, setRetryCount] = useState(0);
   const containerRef = useRef<HTMLDivElement>(null);
   const { openModal } = useMermaidStore();
   // Stable ID for this component instance
@@ -85,13 +86,22 @@ export const MermaidBlock = memo(function MermaidBlock({ code }: MermaidBlockPro
       mounted = false;
       clearTimeout(timeoutId);
     };
-  }, [code, diagramId]);
+  }, [code, diagramId, retryCount]);
 
   if (error && !svg) {
     return (
       <div className='border-base-300 relative my-4 rounded-md border bg-white p-4'>
         <pre className='overflow-x-auto font-mono text-xs text-black opacity-80'>{code}</pre>
-        <div className='absolute right-2 top-2 text-[10px] text-gray-500'>Rendering diagram...</div>
+        <div className='absolute right-2 top-2 flex items-center gap-2'>
+          <span className='text-[10px] text-red-500'>Render Failed</span>
+          <button
+            onClick={() => setRetryCount((c) => c + 1)}
+            className='btn btn-ghost btn-xs btn-square hover:text-primary text-gray-500'
+            title='Retry'
+          >
+            <RefreshCcw className='size-3' />
+          </button>
+        </div>
       </div>
     );
   }

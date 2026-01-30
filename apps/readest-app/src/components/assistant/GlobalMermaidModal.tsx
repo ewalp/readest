@@ -1,4 +1,4 @@
-import { memo, useEffect, useState } from 'react';
+import { memo, useEffect, useState, useRef } from 'react';
 import mermaid from 'mermaid';
 import { ZoomIn, ZoomOut, X } from 'lucide-react';
 import { Dialog, DialogContent, DialogTitle, DialogClose } from '@/components/primitives/dialog';
@@ -11,11 +11,41 @@ const MermaidViewer = memo(function MermaidViewer({ code }: { code: string }) {
   const [scale, setScale] = useState(1);
   const [diagramId] = useState(() => `mermaid-modal-${Math.random().toString(36).slice(2, 9)}`);
 
+  const containerRef = useRef<HTMLDivElement>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const dragStart = useRef({ x: 0, y: 0 });
+  const scrollStart = useRef({ x: 0, y: 0 });
+
   const handleZoom = (delta: number) => {
     setScale((prev) => Math.min(Math.max(0.2, prev + delta), 5));
   };
 
   const resetZoom = () => setScale(1);
+
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (scale <= 1) return;
+    setIsDragging(true);
+    dragStart.current = { x: e.clientX, y: e.clientY };
+    if (containerRef.current) {
+      scrollStart.current = {
+        x: containerRef.current.scrollLeft,
+        y: containerRef.current.scrollTop,
+      };
+    }
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!isDragging || !containerRef.current) return;
+    e.preventDefault();
+    const dx = e.clientX - dragStart.current.x;
+    const dy = e.clientY - dragStart.current.y;
+    containerRef.current.scrollLeft = scrollStart.current.x - dx;
+    containerRef.current.scrollTop = scrollStart.current.y - dy;
+  };
+
+  const handleMouseUp = () => {
+    setIsDragging(false);
+  };
 
   useEffect(() => {
     let mounted = true;
@@ -82,7 +112,16 @@ const MermaidViewer = memo(function MermaidViewer({ code }: { code: string }) {
         </button>
       </div>
 
-      <div className='h-full w-full overflow-auto p-8'>
+      <div
+        className='h-full w-full overflow-auto p-8'
+        role='presentation'
+        ref={containerRef}
+        onMouseDown={handleMouseDown}
+        onMouseMove={handleMouseMove}
+        onMouseUp={handleMouseUp}
+        onMouseLeave={handleMouseUp}
+        style={{ cursor: isDragging ? 'grabbing' : scale > 1 ? 'grab' : 'default' }}
+      >
         <div
           className='flex min-h-full w-full origin-top-left items-center justify-center'
           style={{
@@ -90,6 +129,10 @@ const MermaidViewer = memo(function MermaidViewer({ code }: { code: string }) {
             width: scale > 1 ? `${scale * 100}%` : '100%',
             height: scale > 1 ? `${scale * 100}%` : '100%',
             transformOrigin: 'top left',
+            pointerEvents: 'none', // Allow clicks to pass through to container for dragging? No, SVG might have interactions.
+            // But if we want to drag, we need to capture events on container.
+            // SVG interactions (clicks) usually work on mouse up if no drag occurred.
+            // For now, let's keep interactions enabled but prevent selection if dragging.
           }}
           dangerouslySetInnerHTML={{ __html: svg }}
         />
