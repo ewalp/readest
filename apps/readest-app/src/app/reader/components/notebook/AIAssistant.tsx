@@ -221,6 +221,8 @@ const ThreadWrapper = ({
   );
 };
 
+import { GlobalMermaidModal } from '@/components/assistant/GlobalMermaidModal';
+
 const AIAssistant = ({ bookKey }: AIAssistantProps) => {
   // const _ = useTranslation(); // Removed unused variable
   const { settings } = useSettingsStore();
@@ -366,6 +368,7 @@ const AIAssistant = ({ bookKey }: AIAssistantProps) => {
           }}
         />
       </div>
+      <GlobalMermaidModal />
     </div>
   );
 };

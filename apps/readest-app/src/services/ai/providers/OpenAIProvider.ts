@@ -134,7 +134,7 @@ export class OpenAIProvider implements AIProvider {
       specificationVersion: 'v2',
       provider: 'openai',
       modelId,
-      maxEmbeddingsPerCall: 100,
+      maxEmbeddingsPerCall: 9,
       supportsParallelCalls: true,
       doEmbed: async ({
         values,

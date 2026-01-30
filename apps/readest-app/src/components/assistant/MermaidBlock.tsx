@@ -2,17 +2,17 @@
 
 import { useEffect, useState, useRef, memo, useMemo } from 'react';
 import mermaid from 'mermaid';
-import { ZoomIn, ZoomOut } from 'lucide-react';
+import { ZoomIn, ZoomOut, Maximize2 } from 'lucide-react';
+import { useMermaidStore } from '@/store/mermaidStore';
 
 // Initialize mermaid config
 mermaid.initialize({
   startOnLoad: false,
   theme: 'base',
   securityLevel: 'loose',
-  suppressErrorRendering: true, // We handle errors manually
+  suppressErrorRendering: true,
   themeVariables: {
-    // Basic adjustments to match typical light/dark modes
-    // Proper theming might require observing system theme or data attributes
+    // Basic adjustments could go here
   },
 });
 
@@ -25,11 +25,12 @@ export const MermaidBlock = memo(function MermaidBlock({ code }: MermaidBlockPro
   const [error, setError] = useState<string | null>(null);
   const [scale, setScale] = useState(1);
   const containerRef = useRef<HTMLDivElement>(null);
+  const { openModal } = useMermaidStore();
   // Stable ID for this component instance
   const diagramId = useMemo(() => `mermaid-${Math.random().toString(36).slice(2, 9)}`, []);
 
   const handleZoom = (delta: number) => {
-    setScale((prev) => Math.min(Math.max(0.5, prev + delta), 3));
+    setScale((prev) => Math.min(Math.max(0.5, prev + delta), 5));
   };
 
   const resetZoom = () => setScale(1);
@@ -42,9 +43,8 @@ export const MermaidBlock = memo(function MermaidBlock({ code }: MermaidBlockPro
       if (!code || code.length < 3) return;
 
       try {
-        // Validate syntax first
         if (await mermaid.parse(code)) {
-          // It's valid
+          // Valid
         }
 
         setError(null);
@@ -57,8 +57,6 @@ export const MermaidBlock = memo(function MermaidBlock({ code }: MermaidBlockPro
         }
       } catch (err) {
         if (mounted) {
-          // If we already have a valid SVG, don't show error, just keep the old one
-          // This prevents flickering during streaming when syntax is temporarily broken
           setSvg((prev) => {
             if (prev) return prev;
             setError((err as Error).message);
@@ -77,7 +75,6 @@ export const MermaidBlock = memo(function MermaidBlock({ code }: MermaidBlockPro
   }, [code, diagramId]);
 
   if (error && !svg) {
-    // Fallback to displaying code if rendering fails and we have no previous valid SVG
     return (
       <div className='border-base-300 relative my-4 rounded-md border bg-white p-4'>
         <pre className='overflow-x-auto font-mono text-xs text-black opacity-80'>{code}</pre>
@@ -113,17 +110,24 @@ export const MermaidBlock = memo(function MermaidBlock({ code }: MermaidBlockPro
         >
           <ZoomIn className='size-4' />
         </button>
+        <button
+          onClick={() => openModal(code)}
+          className='rounded p-1 text-gray-600 transition-colors hover:bg-gray-100'
+          title='Maximize'
+        >
+          <Maximize2 className='size-4' />
+        </button>
       </div>
 
       {/* Scrollable Container */}
-      <div className='overflow-auto p-4' style={{ maxHeight: '600px' }}>
+      <div className='h-full w-full overflow-auto p-4' style={{ maxHeight: '600px' }}>
         <div
           ref={containerRef}
           className='mermaid-diagram flex min-h-[100px] w-full origin-top-left justify-center text-black'
           style={{
             transform: `scale(${scale})`,
             width: scale > 1 ? `${scale * 100}%` : '100%',
-            transformOrigin: 'top center',
+            transformOrigin: 'top left',
           }}
           dangerouslySetInnerHTML={{ __html: svg }}
         />
