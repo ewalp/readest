@@ -49,7 +49,7 @@ export interface TextChunk {
 
 export interface ScoredChunk extends TextChunk {
   score: number;
-  searchMethod: 'bm25' | 'vector' | 'hybrid';
+  searchMethod: 'bm25' | 'vector' | 'hybrid' | 'context';
 }
 
 export interface BookIndexMeta {

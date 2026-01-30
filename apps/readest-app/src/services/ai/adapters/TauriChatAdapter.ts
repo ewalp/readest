@@ -2,7 +2,7 @@ import { streamText } from 'ai';
 import type { ChatModelAdapter, ChatModelRunResult } from '@assistant-ui/react';
 import { getAIProvider } from '../providers';
 import { OpenAIProvider } from '../providers/OpenAIProvider';
-import { hybridSearch, isBookIndexed } from '../ragService';
+import { hybridSearch, isBookIndexed, getPageContextChunks } from '../ragService';
 import { aiLogger } from '../logger';
 import { buildSystemPrompt } from '../prompts';
 import type { AISettings, ScoredChunk } from '../types';
@@ -77,13 +77,33 @@ export function createTauriAdapter(getOptions: () => TauriAdapterOptions): ChatM
 
       if (await isBookIndexed(bookHash)) {
         try {
-          chunks = await hybridSearch(
-            bookHash,
-            query,
-            settings,
-            settings.maxContextChunks || 5,
-            settings.spoilerProtection ? currentPage : undefined,
-          );
+          const [pageChunks, searchChunks] = await Promise.all([
+            getPageContextChunks(bookHash, currentPage),
+            hybridSearch(
+              bookHash,
+              query,
+              settings,
+              settings.maxContextChunks || 5,
+              settings.spoilerProtection ? currentPage : undefined,
+            ),
+          ]);
+
+          // Merge and deduplicate (prefer pageChunks)
+          const seen = new Set<string>();
+          chunks = [];
+
+          for (const c of pageChunks) {
+            chunks.push(c);
+            seen.add(c.id);
+          }
+
+          for (const c of searchChunks) {
+            if (!seen.has(c.id)) {
+              chunks.push(c);
+              seen.add(c.id);
+            }
+          }
+
           aiLogger.chat.context(chunks.length, chunks.map((c) => c.text).join('').length);
           lastSources = chunks;
         } catch (e) {

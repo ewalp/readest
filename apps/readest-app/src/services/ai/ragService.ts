@@ -335,6 +335,18 @@ export async function hybridSearch(
   return results;
 }
 
+export async function getPageContextChunks(
+  bookHash: string,
+  pageNumber: number,
+): Promise<ScoredChunk[]> {
+  const chunks = await aiStore.getChunksForPage(bookHash, pageNumber);
+  return chunks.map((c) => ({
+    ...c,
+    score: 2.0, // prioritize explicit page context
+    searchMethod: 'context',
+  }));
+}
+
 export async function clearBookIndex(bookHash: string): Promise<void> {
   aiLogger.store.clear(bookHash);
   await aiStore.clearBook(bookHash);

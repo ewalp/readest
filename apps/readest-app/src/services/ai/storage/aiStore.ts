@@ -179,6 +179,11 @@ class AIStore {
     });
   }
 
+  async getChunksForPage(bookHash: string, pageNumber: number): Promise<TextChunk[]> {
+    const chunks = await this.getChunks(bookHash);
+    return chunks.filter((c) => c.pageNumber === pageNumber);
+  }
+
   async saveBM25Index(bookHash: string, chunks: TextChunk[]): Promise<void> {
     const index = lunr(function (this: lunr.Builder) {
       this.ref('id');
