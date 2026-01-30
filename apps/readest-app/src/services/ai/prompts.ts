@@ -24,7 +24,7 @@ Feel free to discuss the book generally, answer questions about other topics, or
   const contextSection = `\n\n<BOOK_PASSAGES page_limit="${currentPage}">\n${chunks
     .map((c) => {
       const header = c.chapterTitle || `Section ${c.sectionIndex + 1}`;
-      return `[${header}, Page ${c.pageNumber + 1}]\n${c.text}`;
+      return `[${header}, Page ${c.pageNumber}]\n${c.text}`;
     })
     .join('\n\n')}\n</BOOK_PASSAGES>`;
 

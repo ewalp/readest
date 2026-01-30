@@ -23,6 +23,7 @@ interface TauriAdapterOptions {
   bookTitle: string;
   authorName: string;
   currentPage: number;
+  currentSectionIndex: number;
 }
 
 async function* streamViaApiRoute(
@@ -62,7 +63,8 @@ export function createTauriAdapter(getOptions: () => TauriAdapterOptions): ChatM
   return {
     async *run({ messages, abortSignal }): AsyncGenerator<ChatModelRunResult> {
       const options = getOptions();
-      const { settings, bookHash, bookTitle, authorName, currentPage } = options;
+      const { settings, bookHash, bookTitle, authorName, currentPage, currentSectionIndex } =
+        options;
       const provider = getAIProvider(settings);
       let chunks: ScoredChunk[] = [];
 
@@ -78,7 +80,7 @@ export function createTauriAdapter(getOptions: () => TauriAdapterOptions): ChatM
       if (await isBookIndexed(bookHash)) {
         try {
           const [contextChunks, searchChunks] = await Promise.all([
-            getChapterContextChunks(bookHash, currentPage),
+            getChapterContextChunks(bookHash, currentSectionIndex),
             hybridSearch(
               bookHash,
               query,

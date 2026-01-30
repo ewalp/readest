@@ -131,6 +131,7 @@ const AIAssistantChat = memo(
     bookTitle,
     authorName,
     currentPage,
+    currentSectionIndex,
     onResetIndex,
   }: {
     aiSettings: AISettings;
@@ -138,6 +139,7 @@ const AIAssistantChat = memo(
     bookTitle: string;
     authorName: string;
     currentPage: number;
+    currentSectionIndex: number;
     onResetIndex: () => void;
   }) => {
     const {
@@ -155,6 +157,7 @@ const AIAssistantChat = memo(
       bookTitle,
       authorName,
       currentPage,
+      currentSectionIndex,
     });
 
     // update ref on every render with latest values
@@ -165,6 +168,7 @@ const AIAssistantChat = memo(
         bookTitle,
         authorName,
         currentPage,
+        currentSectionIndex,
       };
     });
 
@@ -311,6 +315,7 @@ const AIAssistant = ({ bookKey }: AIAssistantProps) => {
   const bookTitle = bookData?.book?.title || 'Unknown';
   const authorName = bookData?.book?.author || '';
   const currentPage = progress?.pageinfo?.current ?? 0;
+  const currentSectionIndex = progress?.section?.current ?? 0;
   const aiSettings = settings?.aiSettings;
 
   const abortControllerRef = useRef<AbortController | null>(null);
@@ -513,6 +518,7 @@ const AIAssistant = ({ bookKey }: AIAssistantProps) => {
                 bookTitle={bookTitle}
                 authorName={authorName}
                 currentPage={currentPage}
+                currentSectionIndex={currentSectionIndex}
                 onResetIndex={handleResetIndex}
               />
             </div>

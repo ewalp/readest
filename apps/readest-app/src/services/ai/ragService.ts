@@ -349,15 +349,8 @@ export async function getPageContextChunks(
 
 export async function getChapterContextChunks(
   bookHash: string,
-  pageNumber: number,
+  sectionIndex: number,
 ): Promise<ScoredChunk[]> {
-  const pageChunks = await aiStore.getChunksForPage(bookHash, pageNumber);
-  if (pageChunks.length === 0) return [];
-
-  // Assuming all chunks on a page belong to the same section (mostly true)
-  // We take the first chunk's sectionIndex
-  const sectionIndex = pageChunks[0]!.sectionIndex;
-
   const sectionChunks = await aiStore.getChunksForSection(bookHash, sectionIndex);
 
   return sectionChunks.map((c) => ({
