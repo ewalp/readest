@@ -28,6 +28,11 @@ export const MermaidBlock = memo(function MermaidBlock({ code }: MermaidBlockPro
   const { openModal } = useMermaidStore();
   // Stable ID for this component instance
   const diagramId = useMemo(() => `mermaid-${Math.random().toString(36).slice(2, 9)}`, []);
+  const codeRef = useRef(code);
+
+  useEffect(() => {
+    codeRef.current = code;
+  }, [code]);
 
   const handleZoom = (delta: number) => {
     setScale((prev) => Math.min(Math.max(0.5, prev + delta), 5));
@@ -37,26 +42,33 @@ export const MermaidBlock = memo(function MermaidBlock({ code }: MermaidBlockPro
 
   useEffect(() => {
     let mounted = true;
+    const currentCode = code;
 
     const renderDiagram = async () => {
       // Don't try to render if code is too short
-      if (!code || code.length < 3) return;
+      if (!currentCode || currentCode.length < 3) return;
+      // Stale check
+      if (currentCode !== codeRef.current) return;
 
       try {
-        if (await mermaid.parse(code)) {
+        if (await mermaid.parse(currentCode)) {
           // Valid
         }
 
-        setError(null);
+        // Double check stale before heavier render
+        if (!mounted || currentCode !== codeRef.current) return;
 
         // Render with stable ID
-        const { svg: renderedSvg } = await mermaid.render(diagramId, code);
+        const { svg: renderedSvg } = await mermaid.render(diagramId, currentCode);
 
-        if (mounted) {
+        // Final check
+        if (mounted && currentCode === codeRef.current) {
           setSvg(renderedSvg);
+          setError(null);
         }
       } catch (err) {
-        if (mounted) {
+        if (mounted && currentCode === codeRef.current) {
+          // Keep previous SVG if available to avoid flicker
           setSvg((prev) => {
             if (prev) return prev;
             setError((err as Error).message);
@@ -66,7 +78,8 @@ export const MermaidBlock = memo(function MermaidBlock({ code }: MermaidBlockPro
       }
     };
 
-    const timeoutId = setTimeout(renderDiagram, 200);
+    // Increased debounce to reduce flickering during streaming
+    const timeoutId = setTimeout(renderDiagram, 500);
 
     return () => {
       mounted = false;
