@@ -347,6 +347,26 @@ export async function getPageContextChunks(
   }));
 }
 
+export async function getChapterContextChunks(
+  bookHash: string,
+  pageNumber: number,
+): Promise<ScoredChunk[]> {
+  const pageChunks = await aiStore.getChunksForPage(bookHash, pageNumber);
+  if (pageChunks.length === 0) return [];
+
+  // Assuming all chunks on a page belong to the same section (mostly true)
+  // We take the first chunk's sectionIndex
+  const sectionIndex = pageChunks[0]!.sectionIndex;
+
+  const sectionChunks = await aiStore.getChunksForSection(bookHash, sectionIndex);
+
+  return sectionChunks.map((c) => ({
+    ...c,
+    score: 2.0, // prioritize explicit context
+    searchMethod: 'context',
+  }));
+}
+
 export async function clearBookIndex(bookHash: string): Promise<void> {
   aiLogger.store.clear(bookHash);
   await aiStore.clearBook(bookHash);

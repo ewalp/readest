@@ -2,7 +2,7 @@ import { streamText } from 'ai';
 import type { ChatModelAdapter, ChatModelRunResult } from '@assistant-ui/react';
 import { getAIProvider } from '../providers';
 import { OpenAIProvider } from '../providers/OpenAIProvider';
-import { hybridSearch, isBookIndexed, getPageContextChunks } from '../ragService';
+import { hybridSearch, isBookIndexed, getChapterContextChunks } from '../ragService';
 import { aiLogger } from '../logger';
 import { buildSystemPrompt } from '../prompts';
 import type { AISettings, ScoredChunk } from '../types';
@@ -77,8 +77,8 @@ export function createTauriAdapter(getOptions: () => TauriAdapterOptions): ChatM
 
       if (await isBookIndexed(bookHash)) {
         try {
-          const [pageChunks, searchChunks] = await Promise.all([
-            getPageContextChunks(bookHash, currentPage),
+          const [contextChunks, searchChunks] = await Promise.all([
+            getChapterContextChunks(bookHash, currentPage),
             hybridSearch(
               bookHash,
               query,
@@ -88,11 +88,11 @@ export function createTauriAdapter(getOptions: () => TauriAdapterOptions): ChatM
             ),
           ]);
 
-          // Merge and deduplicate (prefer pageChunks)
+          // Merge and deduplicate (prefer contextChunks)
           const seen = new Set<string>();
           chunks = [];
 
-          for (const c of pageChunks) {
+          for (const c of contextChunks) {
             chunks.push(c);
             seen.add(c.id);
           }
