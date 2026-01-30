@@ -302,10 +302,11 @@ const AssistantMessage: FC<AssistantMessageProps> = ({ sources = [] }) => {
                   <DropdownMenuTrigger asChild>
                     <button
                       type='button'
-                      className='text-base-content/40 hover:bg-base-200 hover:text-base-content flex size-6 items-center justify-center rounded-full transition-colors'
+                      className='btn btn-ghost btn-xs text-base-content/60 gap-1 font-normal'
                       aria-label='View sources'
                     >
                       <BookOpenIcon className='size-3' />
+                      Sources
                     </button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent

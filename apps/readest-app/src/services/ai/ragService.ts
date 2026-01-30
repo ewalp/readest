@@ -1,4 +1,5 @@
 import { embed, embedMany } from 'ai';
+import { fetch } from '@tauri-apps/plugin-http';
 import { aiStore } from './storage/aiStore';
 import { chunkSection, extractTextFromDocument } from './utils/chunker';
 import { withRetryAndTimeout, AI_TIMEOUTS, AI_RETRY_CONFIGS } from './utils/retry';
@@ -8,6 +9,41 @@ import { BookDoc } from '@/libs/document';
 import type { AISettings, TextChunk, ScoredChunk, EmbeddingProgress, BookIndexMeta } from './types';
 
 const indexingStates = new Map<string, IndexingState>();
+
+async function fetchOpenAIEmbeddings(
+  settings: AISettings,
+  texts: string[],
+  abortSignal?: AbortSignal,
+): Promise<number[][]> {
+  const modelId = settings.openAiEmbeddingModel || 'text-embedding-3-small';
+  const baseUrl = settings.openAiBaseUrl || 'https://api.openai.com/v1';
+  const url = baseUrl.endsWith('/v1')
+    ? baseUrl + '/embeddings'
+    : baseUrl.replace(/\/+$/, '') + '/embeddings';
+
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      Authorization: `Bearer ${settings.openAiApiKey}`,
+    },
+    body: JSON.stringify({
+      model: modelId,
+      input: texts,
+      encoding_format: 'float',
+    }),
+    signal: abortSignal,
+  });
+
+  if (!response.ok) {
+    const errText = await response.text();
+    throw new Error(`OpenAI Embedding ${response.status}: ${errText}`);
+  }
+  const data = (await response.json()) as {
+    data: Array<{ embedding: number[]; index: number }>;
+  };
+  return data.data.sort((a, b) => a.index - b.index).map((d) => d.embedding);
+}
 
 export async function isBookIndexed(bookHash: string): Promise<boolean> {
   const indexed = await aiStore.isIndexed(bookHash);
@@ -132,16 +168,72 @@ export async function indexBook(
 
     const texts = allChunks.map((c) => c.text);
     try {
-      const { embeddings } = await withRetryAndTimeout(
-        () =>
-          embedMany({
-            model: provider.getEmbeddingModel(),
-            values: texts,
-            abortSignal, // Pass the signal to embedMany
-          }),
-        AI_TIMEOUTS.EMBEDDING_BATCH,
-        AI_RETRY_CONFIGS.EMBEDDING,
-      );
+      let embeddings: number[][] = [];
+
+      if (settings.provider === 'openai') {
+        const BATCH_SIZE = 5;
+        for (let i = 0; i < texts.length; i += BATCH_SIZE) {
+          if (abortSignal?.aborted) throw new Error('Indexing aborted');
+          const batch = texts.slice(i, i + BATCH_SIZE);
+
+          const batchEmbeddings = await withRetryAndTimeout(
+            async () => {
+              const modelId = settings.openAiEmbeddingModel || 'text-embedding-3-small';
+              const baseUrl = settings.openAiBaseUrl || 'https://api.openai.com/v1';
+              const url = baseUrl.endsWith('/v1')
+                ? baseUrl + '/embeddings'
+                : baseUrl.replace(/\/+$/, '') + '/embeddings';
+
+              const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  Authorization: `Bearer ${settings.openAiApiKey}`,
+                },
+                body: JSON.stringify({
+                  model: modelId,
+                  input: batch,
+                  encoding_format: 'float',
+                }),
+                signal: abortSignal,
+              });
+
+              if (!response.ok) {
+                const errText = await response.text();
+                throw new Error(`OpenAI Embedding ${response.status}: ${errText}`);
+              }
+              const data = (await response.json()) as {
+                data: Array<{ embedding: number[]; index: number }>;
+              };
+              return data.data.sort((a, b) => a.index - b.index).map((d) => d.embedding);
+            },
+            AI_TIMEOUTS.EMBEDDING_BATCH,
+            AI_RETRY_CONFIGS.EMBEDDING,
+          );
+
+          embeddings.push(...batchEmbeddings);
+
+          // Update progress roughly
+          const currentProcessed = i + batch.length;
+          onProgress?.({
+            current: currentProcessed,
+            total: texts.length,
+            phase: 'embedding',
+          });
+        }
+      } else {
+        const result = await withRetryAndTimeout(
+          () =>
+            embedMany({
+              model: provider.getEmbeddingModel(),
+              values: texts,
+              abortSignal, // Pass the signal to embedMany
+            }),
+          AI_TIMEOUTS.EMBEDDING_BATCH,
+          AI_RETRY_CONFIGS.EMBEDDING,
+        );
+        embeddings = result.embeddings;
+      }
 
       if (abortSignal?.aborted) throw new Error('Indexing aborted');
 
@@ -153,8 +245,16 @@ export async function indexBook(
       onProgress?.({ current: allChunks.length, total: allChunks.length, phase: 'embedding' });
       aiLogger.embedding.complete(embeddings.length, allChunks.length, embeddings[0]?.length || 0);
     } catch (e) {
-      aiLogger.embedding.error('batch', (e as Error).message);
-      throw e;
+      if ((e as Error).message === 'Indexing aborted' || (e as Error).name === 'AbortError') {
+        throw e;
+      }
+      // If embedding fails (e.g. 401, quota exceeded), we log it but proceed to save text-only chunks.
+      // This allows the app to function using BM25 (Keyword Search) locally.
+      aiLogger.embedding.error(
+        'batch',
+        `Embedding failed, falling back to Keyword Index only: ${(e as Error).message}`,
+      );
+      // We do NOT throw here, so execution continues to saveChunks/saveBM25
     }
 
     if (abortSignal?.aborted) throw new Error('Indexing aborted');
@@ -206,17 +306,26 @@ export async function hybridSearch(
   let queryEmbedding: number[] | null = null;
 
   try {
-    // use AI SDK embed with provider's embedding model
-    const { embedding } = await withRetryAndTimeout(
-      () =>
-        embed({
-          model: provider.getEmbeddingModel(),
-          value: query,
-        }),
-      AI_TIMEOUTS.EMBEDDING_SINGLE,
-      AI_RETRY_CONFIGS.EMBEDDING,
-    );
-    queryEmbedding = embedding;
+    if (settings.provider === 'openai') {
+      const embeddings = await withRetryAndTimeout(
+        () => fetchOpenAIEmbeddings(settings, [query]),
+        AI_TIMEOUTS.EMBEDDING_SINGLE,
+        AI_RETRY_CONFIGS.EMBEDDING,
+      );
+      queryEmbedding = embeddings[0] || null;
+    } else {
+      // use AI SDK embed with provider's embedding model
+      const { embedding } = await withRetryAndTimeout(
+        () =>
+          embed({
+            model: provider.getEmbeddingModel(),
+            value: query,
+          }),
+        AI_TIMEOUTS.EMBEDDING_SINGLE,
+        AI_RETRY_CONFIGS.EMBEDDING,
+      );
+      queryEmbedding = embedding;
+    }
   } catch {
     // bm25 only fallback
   }
