@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { useState, useEffect, useCallback, useMemo, useRef, memo } from 'react';
 import { History, Plus, Trash2, ArrowLeft, MessageSquare } from 'lucide-react';
 import {
   AssistantRuntimeProvider,
@@ -124,106 +124,110 @@ interface AIAssistantProps {
 }
 
 // inner component that uses the runtime hook
-const AIAssistantChat = ({
-  aiSettings,
-  bookHash,
-  bookTitle,
-  authorName,
-  currentPage,
-  onResetIndex,
-}: {
-  aiSettings: AISettings;
-  bookHash: string;
-  bookTitle: string;
-  authorName: string;
-  currentPage: number;
-  onResetIndex: () => void;
-}) => {
-  const {
-    activeConversationId,
-    messages: storedMessages,
-    addMessage,
-    isLoadingHistory,
-    createConversation,
-  } = useAIChatStore();
-
-  // use a ref to keep up-to-date options without triggering re-renders of the runtime
-  const optionsRef = useRef({
-    settings: aiSettings,
+const AIAssistantChat = memo(
+  ({
+    aiSettings,
     bookHash,
     bookTitle,
     authorName,
     currentPage,
-  });
+    onResetIndex,
+  }: {
+    aiSettings: AISettings;
+    bookHash: string;
+    bookTitle: string;
+    authorName: string;
+    currentPage: number;
+    onResetIndex: () => void;
+  }) => {
+    const {
+      activeConversationId,
+      messages: storedMessages,
+      addMessage,
+      isLoadingHistory,
+      createConversation,
+    } = useAIChatStore();
 
-  // update ref on every render with latest values
-  useEffect(() => {
-    optionsRef.current = {
+    // use a ref to keep up-to-date options without triggering re-renders of the runtime
+    const optionsRef = useRef({
       settings: aiSettings,
       bookHash,
       bookTitle,
       authorName,
       currentPage,
-    };
-  });
+    });
 
-  // create adapter ONCE and keep it stable
-  const adapter = useMemo(() => {
-    // eslint-disable-next-line react-hooks/refs -- intentional: we read optionsRef inside a deferred callback, not during render
-    return createTauriAdapter(() => optionsRef.current);
-  }, []);
+    // update ref on every render with latest values
+    useEffect(() => {
+      optionsRef.current = {
+        settings: aiSettings,
+        bookHash,
+        bookTitle,
+        authorName,
+        currentPage,
+      };
+    });
 
-  // Create history adapter to load/persist messages
-  const historyAdapter = useMemo<ThreadHistoryAdapter>(() => {
-    return {
-      async load() {
-        // storedMessages are already loaded by aiChatStore when conversation is selected
-        return {
-          messages: convertToExportedMessages(storedMessages),
-        };
-      },
-      async append(item) {
-        // item is ExportedMessageRepositoryItem - access the actual message via .message
-        const msg = item.message;
-        if (msg.role === 'system') return;
+    // create adapter ONCE and keep it stable
+    const adapter = useMemo(() => {
+      // eslint-disable-next-line react-hooks/refs -- intentional: we read optionsRef inside a deferred callback, not during render
+      return createTauriAdapter(() => optionsRef.current);
+    }, []);
 
-        let conversationId = activeConversationId;
-        if (!conversationId) {
-          conversationId = await createConversation(bookHash, 'Chat');
-        }
+    // Create history adapter to load/persist messages
+    const historyAdapter = useMemo<ThreadHistoryAdapter>(() => {
+      return {
+        async load() {
+          // storedMessages are already loaded by aiChatStore when conversation is selected
+          return {
+            messages: convertToExportedMessages(storedMessages),
+          };
+        },
+        async append(item) {
+          // item is ExportedMessageRepositoryItem - access the actual message via .message
+          const msg = item.message;
+          if (msg.role === 'system') return;
 
-        // Persist new messages to our store
-        if (conversationId) {
-          const textContent = msg.content
-            .filter(
-              (part): part is { type: 'text'; text: string } =>
-                'type' in part && part.type === 'text',
-            )
-            .map((part) => part.text)
-            .join('\n');
-
-          if (textContent) {
-            await addMessage({
-              conversationId: conversationId,
-              role: msg.role as 'user' | 'assistant',
-              content: textContent,
-            });
+          let conversationId = activeConversationId;
+          if (!conversationId) {
+            conversationId = await createConversation(bookHash, 'Chat');
           }
-        }
-      },
-    };
-  }, [activeConversationId, storedMessages, addMessage, createConversation, bookHash]);
 
-  return (
-    <AIAssistantWithRuntime
-      adapter={adapter}
-      historyAdapter={historyAdapter}
-      onResetIndex={onResetIndex}
-      isLoadingHistory={isLoadingHistory}
-      hasActiveConversation={!!activeConversationId}
-    />
-  );
-};
+          // Persist new messages to our store
+          if (conversationId) {
+            const textContent = msg.content
+              .filter(
+                (part): part is { type: 'text'; text: string } =>
+                  'type' in part && part.type === 'text',
+              )
+              .map((part) => part.text)
+              .join('\n');
+
+            if (textContent) {
+              await addMessage({
+                conversationId: conversationId,
+                role: msg.role as 'user' | 'assistant',
+                content: textContent,
+              });
+            }
+          }
+        },
+      };
+    }, [activeConversationId, storedMessages, addMessage, createConversation, bookHash]);
+
+    return (
+      <AIAssistantWithRuntime
+        adapter={adapter}
+        historyAdapter={historyAdapter}
+        onResetIndex={onResetIndex}
+        isLoadingHistory={isLoadingHistory}
+        hasActiveConversation={!!activeConversationId}
+      />
+    );
+  },
+);
+
+AIAssistantChat.displayName = 'AIAssistantChat';
 
 const AIAssistantWithRuntime = ({
   adapter,
@@ -402,6 +406,14 @@ const AIAssistant = ({ bookKey }: AIAssistantProps) => {
     }
   }, []);
 
+  const handleResetIndex = useCallback(async () => {
+    setIndexed(false);
+    // Verify it clears from store
+    const { clearBookIndex } = await import('@/services/ai/ragService');
+    await clearBookIndex(bookHash);
+    performIndexing();
+  }, [bookHash, performIndexing]);
+
   // Removed auto-indexing useEffect
 
   if (!settings.aiSettings?.enabled) {
@@ -501,13 +513,7 @@ const AIAssistant = ({ bookKey }: AIAssistantProps) => {
                 bookTitle={bookTitle}
                 authorName={authorName}
                 currentPage={currentPage}
-                onResetIndex={async () => {
-                  setIndexed(false);
-                  // Verify it clears from store
-                  const { clearBookIndex } = await import('@/services/ai/ragService');
-                  await clearBookIndex(bookHash);
-                  performIndexing();
-                }}
+                onResetIndex={handleResetIndex}
               />
             </div>
           </>
