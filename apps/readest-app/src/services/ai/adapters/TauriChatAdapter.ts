@@ -143,6 +143,17 @@ export function createTauriAdapter(getOptions: () => TauriAdapterOptions): ChatM
           } catch (err) {
             // eslint-disable-next-line @typescript-eslint/no-explicit-any
             const error = err as any;
+
+            const isAbort =
+              error.name === 'AbortError' ||
+              error.message?.includes('cancelled') ||
+              error.message?.includes('Aborted');
+
+            if (isAbort) {
+              console.log('[TauriAdapter] Manual stream aborted');
+              throw error; // Re-throw to be caught by outer block
+            }
+
             console.error('[TauriAdapter] Manual stream failed:', error);
             alert('Chat Error: ' + (error.message || 'Unknown error'));
             throw error;
@@ -200,8 +211,14 @@ export function createTauriAdapter(getOptions: () => TauriAdapterOptions): ChatM
 
         aiLogger.chat.complete(text.length);
       } catch (error) {
-        if ((error as Error).name !== 'AbortError') {
-          const errMsg = (error as Error).message;
+        const err = error as Error;
+        const isAbort =
+          err.name === 'AbortError' ||
+          err.message?.includes('cancelled') ||
+          err.message?.includes('Aborted');
+
+        if (!isAbort) {
+          const errMsg = err.message;
           console.error('[TauriAdapter] Critical Chat Error:', error);
           aiLogger.chat.error(errMsg);
           // VISIBLE ERROR FOR DEBUGGING:
