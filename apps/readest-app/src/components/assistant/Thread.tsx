@@ -161,19 +161,15 @@ export const Thread: FC<ThreadProps> = ({
     <ThreadPrimitive.Root className='bg-base-100 relative flex h-full w-full flex-col items-stretch px-3'>
       <LoadingOverlay isVisible={showLoading} />
 
-      {!hasActiveConversation && (
-        <ThreadPrimitive.Empty>
-          <div className='animate-in fade-in flex h-full flex-col items-center justify-center duration-300'>
-            <div className='bg-base-content/10 mb-4 rounded-full p-3'>
-              <BookOpenIcon className='text-base-content size-6' />
-            </div>
-            <h3 className='text-base-content mb-1 text-sm font-medium'>Ask about this book</h3>
-            <p className='text-base-content/60 mb-4 text-xs'>
-              Get answers based on the book content
-            </p>
-            <Composer onClear={onClear} onResetIndex={onResetIndex} />
+      {messageCount === 0 && (
+        <div className='animate-in fade-in flex h-full flex-col items-center justify-center duration-300'>
+          <div className='bg-base-content/10 mb-4 rounded-full p-3'>
+            <BookOpenIcon className='text-base-content size-6' />
           </div>
-        </ThreadPrimitive.Empty>
+          <h3 className='text-base-content mb-1 text-sm font-medium'>Ask about this book</h3>
+          <p className='text-base-content/60 mb-4 text-xs'>Get answers based on the book content</p>
+          <Composer onClear={onClear} onResetIndex={onResetIndex} />
+        </div>
       )}
 
       <AssistantIf condition={(s) => s.thread.isEmpty === false}>

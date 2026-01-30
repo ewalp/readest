@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import { History, Plus, Trash2, ArrowLeft, MessageSquare } from 'lucide-react';
 import {
   AssistantRuntimeProvider,
   useLocalRuntime,
@@ -53,6 +54,71 @@ function convertToExportedMessages(
   });
 }
 
+const ChatHistoryList = ({
+  bookHash,
+  onSelect,
+  onClose,
+}: {
+  bookHash: string;
+  onSelect: (id: string) => void;
+  onClose: () => void;
+}) => {
+  const { conversations, deleteConversation, loadConversations } = useAIChatStore();
+
+  useEffect(() => {
+    if (bookHash) loadConversations(bookHash);
+  }, [bookHash, loadConversations]);
+
+  return (
+    <div className='bg-base-100 flex h-full flex-col'>
+      <div className='border-base-300 bg-base-200 flex min-h-12 items-center border-b px-2'>
+        <button onClick={onClose} className='btn btn-ghost btn-sm btn-square'>
+          <ArrowLeft className='size-4' />
+        </button>
+        <span className='flex-1 text-center font-bold'>History</span>
+      </div>
+      <div className='flex-1 space-y-2 overflow-y-auto p-2'>
+        {conversations.length === 0 && (
+          <div className='text-base-content/50 flex h-full flex-col items-center justify-center'>
+            <History className='mb-2 size-8 opacity-20' />
+            <span className='text-sm'>No history yet</span>
+          </div>
+        )}
+        {conversations.map((c) => (
+          <div
+            key={c.id}
+            role='button'
+            tabIndex={0}
+            onKeyDown={(e) => {
+              if (e.key === 'Enter' || e.key === ' ') {
+                onSelect(c.id);
+              }
+            }}
+            className='card bg-base-200 hover:bg-base-300 flex cursor-pointer flex-row items-center justify-between p-3 shadow-sm transition-colors'
+            onClick={() => onSelect(c.id)}
+          >
+            <div className='flex flex-col overflow-hidden'>
+              <span className='truncate font-medium'>{c.title || 'Chat'}</span>
+              <span className='text-xs opacity-70'>{new Date(c.updatedAt).toLocaleString()}</span>
+            </div>
+            <button
+              onClick={(e) => {
+                e.stopPropagation();
+                if (confirm('Delete this conversation?')) {
+                  deleteConversation(c.id);
+                }
+              }}
+              className='btn btn-ghost text-error btn-square btn-xs'
+            >
+              <Trash2 className='size-4' />
+            </button>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+};
+
 interface AIAssistantProps {
   bookKey: string;
 }
@@ -78,6 +144,7 @@ const AIAssistantChat = ({
     messages: storedMessages,
     addMessage,
     isLoadingHistory,
+    createConversation,
   } = useAIChatStore();
 
   // use a ref to keep up-to-date options without triggering re-renders of the runtime
@@ -107,9 +174,7 @@ const AIAssistantChat = ({
   }, []);
 
   // Create history adapter to load/persist messages
-  const historyAdapter = useMemo<ThreadHistoryAdapter | undefined>(() => {
-    if (!activeConversationId) return undefined;
-
+  const historyAdapter = useMemo<ThreadHistoryAdapter>(() => {
     return {
       async load() {
         // storedMessages are already loaded by aiChatStore when conversation is selected
@@ -120,8 +185,15 @@ const AIAssistantChat = ({
       async append(item) {
         // item is ExportedMessageRepositoryItem - access the actual message via .message
         const msg = item.message;
+        if (msg.role === 'system') return;
+
+        let conversationId = activeConversationId;
+        if (!conversationId) {
+          conversationId = await createConversation(bookHash, 'Chat');
+        }
+
         // Persist new messages to our store
-        if (activeConversationId && msg.role !== 'system') {
+        if (conversationId) {
           const textContent = msg.content
             .filter(
               (part): part is { type: 'text'; text: string } =>
@@ -132,7 +204,7 @@ const AIAssistantChat = ({
 
           if (textContent) {
             await addMessage({
-              conversationId: activeConversationId,
+              conversationId: conversationId,
               role: msg.role as 'user' | 'assistant',
               content: textContent,
             });
@@ -140,7 +212,7 @@ const AIAssistantChat = ({
         }
       },
     };
-  }, [activeConversationId, storedMessages, addMessage]);
+  }, [activeConversationId, storedMessages, addMessage, createConversation, bookHash]);
 
   return (
     <AIAssistantWithRuntime
@@ -242,6 +314,34 @@ const AIAssistant = ({ bookKey }: AIAssistantProps) => {
   const [indexingPhase, setIndexingPhase] = useState<string>('');
   const [isIndexing, setIsIndexing] = useState(false);
   const [indexed, setIndexed] = useState(false);
+  const [viewMode, setViewMode] = useState<'chat' | 'history'>('chat');
+
+  const {
+    loadConversations,
+    conversations,
+    setActiveConversation,
+    activeConversationId,
+    isLoadingHistory,
+    createConversation,
+  } = useAIChatStore();
+
+  // Load conversations on mount
+  useEffect(() => {
+    if (bookHash) {
+      loadConversations(bookHash);
+    }
+  }, [bookHash, loadConversations]);
+
+  // Restore session if exists
+  useEffect(() => {
+    if (!bookHash || isLoadingHistory) return;
+
+    // Check if we need to restore a session
+    if (!activeConversationId && conversations.length > 0) {
+      const mostRecent = conversations[0]!;
+      setActiveConversation(mostRecent.id);
+    }
+  }, [bookHash, isLoadingHistory, conversations, activeConversationId, setActiveConversation]);
 
   // Check if book is already indexed on mount
   useEffect(() => {
@@ -313,6 +413,11 @@ const AIAssistant = ({ bookKey }: AIAssistantProps) => {
     );
   }
 
+  const handleNewChat = () => {
+    createConversation(bookHash, 'New Chat');
+    setViewMode('chat');
+  };
+
   return (
     <div className='bg-base-100 flex h-full flex-col'>
       {/* Indexing Status / Control Banner */}
@@ -351,22 +456,62 @@ const AIAssistant = ({ bookKey }: AIAssistantProps) => {
         </div>
       )}
 
-      {/* Messages Area */}
-      <div className='flex-1 overflow-hidden'>
-        <AIAssistantChat
-          aiSettings={aiSettings}
-          bookHash={bookHash}
-          bookTitle={bookTitle}
-          authorName={authorName}
-          currentPage={currentPage}
-          onResetIndex={async () => {
-            setIndexed(false);
-            // Verify it clears from store
-            const { clearBookIndex } = await import('@/services/ai/ragService');
-            await clearBookIndex(bookHash);
-            performIndexing();
-          }}
-        />
+      {/* Messages Area OR History */}
+      <div className='relative flex flex-1 flex-col overflow-hidden'>
+        {viewMode === 'history' ? (
+          <ChatHistoryList
+            bookHash={bookHash}
+            onSelect={(id) => {
+              setActiveConversation(id);
+              setViewMode('chat');
+            }}
+            onClose={() => setViewMode('chat')}
+          />
+        ) : (
+          <>
+            {/* Toolbar */}
+            <div className='border-base-200 bg-base-100 flex min-h-12 items-center justify-between border-b px-4 py-2'>
+              <span className='mr-2 flex flex-1 items-center gap-2 truncate text-sm font-semibold opacity-70'>
+                <MessageSquare className='size-4 shrink-0' />
+                <span className='truncate'>
+                  {conversations.find((c) => c.id === activeConversationId)?.title || 'New Chat'}
+                </span>
+              </span>
+              <div className='flex shrink-0 gap-1'>
+                <button
+                  onClick={() => setViewMode('history')}
+                  className='btn btn-ghost btn-sm btn-square'
+                  title='History'
+                >
+                  <History className='size-4' />
+                </button>
+                <button
+                  onClick={handleNewChat}
+                  className='btn btn-ghost btn-sm btn-square'
+                  title='New Chat'
+                >
+                  <Plus className='size-4' />
+                </button>
+              </div>
+            </div>
+            <div className='relative flex-1 overflow-hidden'>
+              <AIAssistantChat
+                aiSettings={aiSettings}
+                bookHash={bookHash}
+                bookTitle={bookTitle}
+                authorName={authorName}
+                currentPage={currentPage}
+                onResetIndex={async () => {
+                  setIndexed(false);
+                  // Verify it clears from store
+                  const { clearBookIndex } = await import('@/services/ai/ragService');
+                  await clearBookIndex(bookHash);
+                  performIndexing();
+                }}
+              />
+            </div>
+          </>
+        )}
       </div>
       <GlobalMermaidModal />
     </div>
