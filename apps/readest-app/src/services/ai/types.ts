@@ -35,6 +35,9 @@ export interface AISettings {
   spoilerProtection: boolean;
   maxContextChunks: number;
   indexingMode: 'on-demand' | 'background';
+
+  fontSize: number;
+  useBookTheme: boolean;
 }
 
 export interface TextChunk {

@@ -11,6 +11,7 @@ import type { AISettings, AIProviderName } from '@/services/ai/types';
 
 const DEFAULT_OPENAI_BASE_URL = 'http://newapi.prd.intenal:6363/v1';
 const DEFAULT_OPENAI_MODEL = 'gpt-4o-mini';
+const DEFAULT_FONT_SIZE = 14;
 
 type ConnectionStatus = 'idle' | 'testing' | 'success' | 'error';
 type CustomModelStatus = 'idle' | 'validating' | 'valid' | 'invalid';
@@ -78,6 +79,9 @@ const AIPanel: React.FC = () => {
   const [ollamaModels, setOllamaModels] = useState<string[]>([]);
   const [fetchingModels, setFetchingModels] = useState(false);
   const [gatewayKey, setGatewayKey] = useState(aiSettings.aiGatewayApiKey ?? '');
+
+  const [fontSize, setFontSize] = useState(aiSettings.fontSize ?? DEFAULT_FONT_SIZE);
+  const [useBookTheme, setUseBookTheme] = useState(aiSettings.useBookTheme ?? true);
 
   const [openAiBaseUrl, setOpenAiBaseUrl] = useState(
     aiSettings.openAiBaseUrl || DEFAULT_OPENAI_BASE_URL,
@@ -209,6 +213,20 @@ const AIPanel: React.FC = () => {
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [gatewayKey]);
+
+  useEffect(() => {
+    if (!isMounted.current) return;
+    if (fontSize !== aiSettings.fontSize) {
+      saveAiSetting('fontSize', fontSize);
+    }
+  }, [fontSize]);
+
+  useEffect(() => {
+    if (!isMounted.current) return;
+    if (useBookTheme !== aiSettings.useBookTheme) {
+      saveAiSetting('useBookTheme', useBookTheme);
+    }
+  }, [useBookTheme]);
 
   useEffect(() => {
     if (!isMounted.current) return;
@@ -369,6 +387,43 @@ const AIPanel: React.FC = () => {
                 className='toggle'
                 checked={enabled}
                 onChange={() => setEnabled(!enabled)}
+              />
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div className={clsx('w-full', disabledSection)}>
+        <h2 className='mb-2 font-medium'>{_('Appearance')}</h2>
+        <div className='card border-base-200 bg-base-100 border shadow'>
+          <div className='divide-base-200 divide-y'>
+            <div className='config-item'>
+              <div className='flex flex-col'>
+                <span>{_('Font Size')}</span>
+                <span className='text-base-content/60 text-xs'>{fontSize}px</span>
+              </div>
+              <input
+                type='range'
+                min='12'
+                max='24'
+                step='1'
+                value={fontSize}
+                onChange={(e) => setFontSize(parseInt(e.target.value))}
+                className='range range-xs range-primary w-32'
+              />
+            </div>
+            <div className='config-item'>
+              <div className='flex flex-col'>
+                <span>{_('Match Book Theme')}</span>
+                <span className='text-base-content/60 text-xs'>
+                  {_('Sync background with book')}
+                </span>
+              </div>
+              <input
+                type='checkbox'
+                className='toggle'
+                checked={useBookTheme}
+                onChange={() => setUseBookTheme(!useBookTheme)}
               />
             </div>
           </div>

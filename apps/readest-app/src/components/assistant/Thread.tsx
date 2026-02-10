@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, type FC } from 'react';
+import { useEffect, useRef, useMemo, type FC } from 'react';
 import {
   ActionBarPrimitive,
   AssistantIf,
@@ -12,6 +12,10 @@ import {
   useThreadViewport,
   useThread,
 } from '@assistant-ui/react';
+import { useSettingsStore } from '@/store/settingsStore';
+import { useThemeStore } from '@/store/themeStore';
+import { useSidebarStore } from '@/store/sidebarStore';
+import { getThemeCode } from '@/utils/style';
 import {
   ArrowUpIcon,
   BookOpenIcon,
@@ -106,6 +110,38 @@ export const Thread: FC<ThreadProps> = ({
   isLoadingHistory = false,
   hasActiveConversation = false,
 }) => {
+  const { settings } = useSettingsStore();
+  const { isDarkMode } = useThemeStore();
+  const { sideBarBookKey } = useSidebarStore();
+
+  const aiSettings = settings.aiSettings;
+  const fontSize = aiSettings?.fontSize || 14;
+  const useBookTheme = aiSettings?.useBookTheme ?? true;
+
+  // Calculate theme variables if we need to match book theme
+  const themeStyles = useMemo(() => {
+    if (!useBookTheme || !sideBarBookKey) return {};
+
+    // We try to get the theme from the book's view settings
+    // But since we can't easily access the internal state of FoliateViewer from here
+    // We'll use the current global theme/custom theme logic which matches what the reader uses
+    // This might not perfectly match if the book has specific overrides but should be close enough
+    // for most cases where the user just wants the background to match
+
+    // Actually, checking if we can get the view settings
+    // const viewSettings = useReaderStore.getState().getViewSettings(sideBarBookKey);
+    // But accessing store state directly in render is bad practice, better to use hook if available
+
+    // For now, let's use the standard theme code generation which is what the reader uses
+    const themeCode = getThemeCode();
+
+    return {
+      '--thread-bg': themeCode.bg,
+      '--thread-fg': themeCode.fg,
+      '--thread-primary': themeCode.primary,
+    } as React.CSSProperties;
+  }, [useBookTheme, sideBarBookKey, isDarkMode]);
+
   const viewportRef = useRef<HTMLDivElement>(null);
   const isInitialMount = useRef(true);
   const messageCount = useThread((t) => t.messages.length);
@@ -158,7 +194,17 @@ export const Thread: FC<ThreadProps> = ({
   };
 
   return (
-    <ThreadPrimitive.Root className='bg-base-100 relative flex h-full w-full flex-col items-stretch px-3'>
+    <ThreadPrimitive.Root
+      className={cn(
+        'relative flex h-full w-full flex-col items-stretch px-3',
+        !useBookTheme && 'bg-base-100',
+      )}
+      style={{
+        ...themeStyles,
+        backgroundColor: useBookTheme ? 'var(--thread-bg, var(--base-100))' : undefined,
+        color: useBookTheme ? 'var(--thread-fg, var(--base-content))' : undefined,
+      }}
+    >
       <LoadingOverlay isVisible={showLoading} />
 
       {messageCount === 0 && (
@@ -188,7 +234,7 @@ export const Thread: FC<ThreadProps> = ({
               components={{
                 UserMessage,
                 EditComposer,
-                AssistantMessage: () => <AssistantMessage sources={sources} />,
+                AssistantMessage: () => <AssistantMessage sources={sources} fontSize={fontSize} />,
               }}
             />
             <p className='text-base-content/40 mx-auto w-full p-1 text-center text-[10px]'>
@@ -277,14 +323,41 @@ const Composer: FC<ComposerProps> = ({ onClear, onResetIndex }) => {
 
 interface AssistantMessageProps {
   sources?: ScoredChunk[];
+  fontSize?: number;
 }
 
-const AssistantMessage: FC<AssistantMessageProps> = ({ sources = [] }) => {
+const AssistantMessage: FC<AssistantMessageProps> = ({ sources = [], fontSize = 14 }) => {
   return (
     <MessagePrimitive.Root className='group/message animate-in fade-in slide-in-from-bottom-1 relative mx-auto mb-1 flex w-full flex-col pb-0.5 duration-200'>
       <div className='flex flex-col items-start'>
         <div className='w-full max-w-none'>
-          <div className='prose prose-xs text-base-content [&_*]:!text-base-content [&_a]:!text-primary [&_code]:!text-base-content max-w-none select-text text-sm'>
+          <div
+            className='prose prose-xs max-w-none select-text'
+            style={
+              {
+                fontSize: `${fontSize}px`,
+                lineHeight: 1.6,
+                // Override tailwind prose colors if using book theme
+                color: 'inherit',
+                '--tw-prose-body': 'inherit',
+                '--tw-prose-headings': 'inherit',
+                '--tw-prose-lead': 'inherit',
+                '--tw-prose-links': 'var(--thread-primary, inherit)',
+                '--tw-prose-bold': 'inherit',
+                '--tw-prose-counters': 'inherit',
+                '--tw-prose-bullets': 'inherit',
+                '--tw-prose-hr': 'inherit',
+                '--tw-prose-quotes': 'inherit',
+                '--tw-prose-quote-borders': 'inherit',
+                '--tw-prose-captions': 'inherit',
+                '--tw-prose-code': 'inherit',
+                '--tw-prose-pre-code': 'inherit',
+                '--tw-prose-pre-bg': 'transparent',
+                '--tw-prose-th-borders': 'inherit',
+                '--tw-prose-td-borders': 'inherit',
+              } as React.CSSProperties
+            }
+          >
             <MessagePrimitive.Parts components={{ Text: MarkdownText }} />
           </div>
         </div>
@@ -357,7 +430,7 @@ const UserMessage: FC = () => {
     >
       <div className='flex flex-col items-end'>
         <div className='border-base-content/10 bg-base-200 text-base-content relative max-w-[90%] rounded-2xl rounded-br-md border px-3 py-2'>
-          <div className='prose prose-xs text-base-content [&_*]:!text-base-content select-text text-sm'>
+          <div className='prose prose-xs text-base-content [&_*]:!text-base-content select-text'>
             <MessagePrimitive.Parts components={{ Text: MarkdownText }} />
           </div>
         </div>
