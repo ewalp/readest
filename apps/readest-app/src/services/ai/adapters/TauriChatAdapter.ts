@@ -24,6 +24,7 @@ interface TauriAdapterOptions {
   authorName: string;
   currentPage: number;
   currentSectionIndex: number;
+  promptMode?: 'standard' | 'devil' | 'feynman' | 'radar';
 }
 
 async function* streamViaApiRoute(
@@ -116,7 +117,7 @@ export function createTauriAdapter(getOptions: () => TauriAdapterOptions): ChatM
         lastSources = [];
       }
 
-      const systemPrompt = buildSystemPrompt(bookTitle, authorName, chunks, currentPage);
+      const systemPrompt = buildSystemPrompt(bookTitle, authorName, chunks, currentPage, options.promptMode);
 
       const aiMessages = messages.map((m) => ({
         role: m.role as 'user' | 'assistant',

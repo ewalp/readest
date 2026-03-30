@@ -17,6 +17,7 @@ import { useReaderStore } from '@/store/readerStore';
 import { useAIChatStore } from '@/store/aiChatStore';
 import { createTauriAdapter, getLastSources, clearLastSources } from '@/services/ai';
 import type { AISettings, AIMessage } from '@/services/ai/types';
+import type { PromptMode } from '@/services/ai/prompts';
 
 import { Thread } from '@/components/assistant/Thread';
 
@@ -132,6 +133,7 @@ const AIAssistantChat = memo(
     authorName,
     currentPage,
     currentSectionIndex,
+    promptMode,
     onResetIndex,
   }: {
     aiSettings: AISettings;
@@ -140,6 +142,7 @@ const AIAssistantChat = memo(
     authorName: string;
     currentPage: number;
     currentSectionIndex: number;
+    promptMode: PromptMode;
     onResetIndex: () => void;
   }) => {
     const {
@@ -158,6 +161,7 @@ const AIAssistantChat = memo(
       authorName,
       currentPage,
       currentSectionIndex,
+      promptMode,
     });
 
     // update ref on every render with latest values
@@ -169,6 +173,7 @@ const AIAssistantChat = memo(
         authorName,
         currentPage,
         currentSectionIndex,
+        promptMode,
       };
     });
 
@@ -324,6 +329,7 @@ const AIAssistant = ({ bookKey }: AIAssistantProps) => {
   const [isIndexing, setIsIndexing] = useState(false);
   const [indexed, setIndexed] = useState(false);
   const [viewMode, setViewMode] = useState<'chat' | 'history'>('chat');
+  const [promptMode, setPromptMode] = useState<PromptMode>('standard');
 
   const {
     loadConversations,
@@ -411,6 +417,11 @@ const AIAssistant = ({ bookKey }: AIAssistantProps) => {
     }
   }, []);
 
+  // Clean up indexing if component unmounts
+  useEffect(() => {
+    return () => cancelIndexing();
+  }, [cancelIndexing]);
+
   const handleResetIndex = useCallback(async () => {
     setIndexed(false);
     // Verify it clears from store
@@ -494,7 +505,17 @@ const AIAssistant = ({ bookKey }: AIAssistantProps) => {
                   {conversations.find((c) => c.id === activeConversationId)?.title || 'New Chat'}
                 </span>
               </span>
-              <div className='flex shrink-0 gap-1'>
+              <div className='flex items-center shrink-0 gap-2'>
+                <select
+                  className='select select-bordered select-xs w-28 bg-base-200'
+                  value={promptMode}
+                  onChange={(e) => setPromptMode(e.target.value as PromptMode)}
+                  title="Cognitive Mode"
+                >
+                  <option value="standard">标准模式</option>
+                  <option value="devil">反方思辨</option>
+                  <option value="feynman">费曼模式</option>
+                </select>
                 <button
                   onClick={() => setViewMode('history')}
                   className='btn btn-ghost btn-sm btn-square'
@@ -519,6 +540,7 @@ const AIAssistant = ({ bookKey }: AIAssistantProps) => {
                 authorName={authorName}
                 currentPage={currentPage}
                 currentSectionIndex={currentSectionIndex}
+                promptMode={promptMode}
                 onResetIndex={handleResetIndex}
               />
             </div>

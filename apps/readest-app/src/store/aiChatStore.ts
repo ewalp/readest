@@ -110,22 +110,26 @@ export const useAIChatStore = create<AIChatState>((set, get) => ({
       // conversationId is in ...message
     };
 
-    // Pass bookHash to saveMessage
-    await aiStore.saveMessage(currentBookHash, fullMessage);
+    try {
+      // Pass bookHash to saveMessage
+      await aiStore.saveMessage(currentBookHash, fullMessage);
 
-    // update conversation updatedAt
-    if (activeConversationId) {
-      const conversations = get().conversations;
-      const conv = conversations.find((c) => c.id === activeConversationId);
-      if (conv) {
-        conv.updatedAt = Date.now();
-        await aiStore.saveConversation(conv);
+      // update conversation updatedAt
+      if (activeConversationId) {
+        const conversations = get().conversations;
+        const conv = conversations.find((c) => c.id === activeConversationId);
+        if (conv) {
+          conv.updatedAt = Date.now();
+          await aiStore.saveConversation(conv);
+        }
       }
-    }
 
-    set((state) => ({
-      messages: [...state.messages, fullMessage],
-    }));
+      set((state) => ({
+        messages: [...state.messages, fullMessage],
+      }));
+    } catch (error) {
+      console.error('Failed to save message to AI store:', error);
+    }
   },
 
   deleteConversation: async (id: string) => {

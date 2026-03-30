@@ -11,11 +11,11 @@ import {
   useAssistantState,
   useThreadViewport,
   useThread,
+  useAssistantRuntime,
 } from '@assistant-ui/react';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useThemeStore } from '@/store/themeStore';
 import { useSidebarStore } from '@/store/sidebarStore';
-import { getThemeCode } from '@/utils/style';
 import {
   ArrowUpIcon,
   BookOpenIcon,
@@ -28,6 +28,7 @@ import {
   RefreshCwIcon,
   SquareIcon,
   Trash2Icon,
+  Radar,
 } from 'lucide-react';
 
 import { MarkdownText } from './MarkdownText';
@@ -111,8 +112,9 @@ export const Thread: FC<ThreadProps> = ({
   hasActiveConversation = false,
 }) => {
   const { settings } = useSettingsStore();
-  const { isDarkMode } = useThemeStore();
+  const { themeCode } = useThemeStore();
   const { sideBarBookKey } = useSidebarStore();
+  const assistantRuntime = useAssistantRuntime();
 
   const aiSettings = settings.aiSettings;
   const fontSize = aiSettings?.fontSize || 14;
@@ -128,19 +130,12 @@ export const Thread: FC<ThreadProps> = ({
     // This might not perfectly match if the book has specific overrides but should be close enough
     // for most cases where the user just wants the background to match
 
-    // Actually, checking if we can get the view settings
-    // const viewSettings = useReaderStore.getState().getViewSettings(sideBarBookKey);
-    // But accessing store state directly in render is bad practice, better to use hook if available
-
-    // For now, let's use the standard theme code generation which is what the reader uses
-    const themeCode = getThemeCode();
-
     return {
       '--thread-bg': themeCode.bg,
       '--thread-fg': themeCode.fg,
       '--thread-primary': themeCode.primary,
     } as React.CSSProperties;
-  }, [useBookTheme, sideBarBookKey, isDarkMode]);
+  }, [useBookTheme, sideBarBookKey, themeCode]);
 
   const viewportRef = useRef<HTMLDivElement>(null);
   const isInitialMount = useRef(true);
@@ -214,6 +209,21 @@ export const Thread: FC<ThreadProps> = ({
           </div>
           <h3 className='text-base-content mb-1 text-sm font-medium'>Ask about this book</h3>
           <p className='text-base-content/60 mb-4 text-xs'>Get answers based on the book content</p>
+          
+          <button 
+            type="button"
+            onClick={() => {
+              assistantRuntime.thread.append({
+                role: 'user',
+                content: [{ type: 'text', text: '【本章导读雷达】请根据当前章节内容，提出3个能够激发阅读兴趣、值得深思的核心或者悬念问题，不要剧透。' }]
+              });
+            }}
+            className="btn border-base-content/20 bg-base-100 hover:bg-base-200 text-base-content mb-6 shadow-sm btn-sm gap-2 rounded-full font-medium"
+          >
+            <Radar className="size-4 text-primary" />
+            提取本章导读雷达
+          </button>
+
           <Composer onClear={onClear} onResetIndex={onResetIndex} />
         </div>
       )}
