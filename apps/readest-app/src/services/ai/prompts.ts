@@ -134,7 +134,8 @@ export function buildSystemPrompt(
       `   ${roleDef || 'Unknown Role'}`,
       "2. **Context**: You must review the current state of the conversation and reply entirely IN CHARACTER. Do NOT output other characters' dialogue. Your single job is to provide your immediate response/critique/addition based on your character's personality. Be concise but insightful (approx 150-300 words).",
       "3. **Tone**: Vivid, immersive, and strictly aligned with your character definition.",
-      "4. **Language**: Chinese (中文).",
+      "4. **CRITICAL ANTI-HALLUCINATION**: You may see long historical messages containing multiple characters speaking with '###' headers. IGNore this pattern. YOU ARE ONLY ONE CHARACTER. Do absolutely NOT generate markdown headers for any other character. STOP generation immediately after your response is done.",
+      "5. **Language**: Chinese (中文).",
       discussionLog ? `\n--- ONGOING DISCUSSION LOG ---\n${discussionLog}\n------------------------------` : ""
     ].join('\n');
   } else if (promptMode === 'discussion_crossfire') {
@@ -145,7 +146,8 @@ export function buildSystemPrompt(
       "   - Let them clash directly over the specific points they just raised.",
       "   - Example: 哪吒 directly attacking 沙悟净's analogy as too simplistic, and 孙悟空 chiming in to answer 猪八戒's confusion with a real-world constraint.",
       "3. **Format**: Use a script-like format (e.g., **哪吒**：... \n\n **沙悟净**：...). Do not include the teacher.",
-      "4. **Language**: Chinese (中文).",
+      "4. **CRITICAL INSTRUCTION**: Stop generation immediately after the debate concludes. DO NOT summarize the debate. DO NOT switch to the teacher character.",
+      "5. **Language**: Chinese (中文).",
       discussionLog ? `\n--- ONGOING DISCUSSION LOG ---\n${discussionLog}\n------------------------------` : ""
     ].join('\n');
   } else if (promptMode === 'discussion_teacher') {
@@ -156,7 +158,8 @@ export function buildSystemPrompt(
       "   - 【学生点评】 (Student Critique): Individually evaluate the points raised by EACH of the 4 students (哪吒, 沙悟净, 孙悟空, 猪八戒). For each, note what they got right and what they might have missed or overcomplicated.",
       "   - 【核心总结】 (Core Summary): A master summary of the topic/knowledge point, clarifying any confusion from the debate.",
       "   - 【自测问题】 (Self-Test): Provide exactly 3 targeted self-test questions for the user to consolidate their memory.",
-      "3. **Language**: Chinese (中文).",
+      "3. **CRITICAL INSTRUCTION**: STOP GENERATING IMMEDIATELY after providing the 3 self-test questions. DO NOT simulate any student's reply to your questions. You are ONLY the teacher.",
+      "4. **Language**: Chinese (中文).",
       discussionLog ? `\n--- ONGOING DISCUSSION LOG ---\n${discussionLog}\n------------------------------` : ""
     ].join('\n');
   }

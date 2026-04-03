@@ -147,10 +147,7 @@ const AIAssistantChat = memo(
   }) => {
     const {
       activeConversationId,
-      messages: storedMessages,
-      addMessage,
       isLoadingHistory,
-      createConversation,
     } = useAIChatStore();
 
     // use a ref to keep up-to-date options without triggering re-renders of the runtime
@@ -187,22 +184,20 @@ const AIAssistantChat = memo(
     const historyAdapter = useMemo<ThreadHistoryAdapter>(() => {
       return {
         async load() {
-          // storedMessages are already loaded by aiChatStore when conversation is selected
+          const storedMessages = useAIChatStore.getState().messages;
           return {
             messages: convertToExportedMessages(storedMessages),
           };
         },
         async append(item) {
-          // item is ExportedMessageRepositoryItem - access the actual message via .message
           const msg = item.message;
           if (msg.role === 'system') return;
 
-          let conversationId = activeConversationId;
+          let conversationId = useAIChatStore.getState().activeConversationId;
           if (!conversationId) {
-            conversationId = await createConversation(bookHash, 'Chat');
+            conversationId = await useAIChatStore.getState().createConversation(bookHash, 'Chat');
           }
 
-          // Persist new messages to our store
           if (conversationId) {
             const textContent = msg.content
               .filter(
@@ -213,7 +208,7 @@ const AIAssistantChat = memo(
               .join('\n');
 
             if (textContent) {
-              await addMessage({
+              await useAIChatStore.getState().addMessage({
                 conversationId: conversationId,
                 role: msg.role as 'user' | 'assistant',
                 content: textContent,
@@ -222,7 +217,7 @@ const AIAssistantChat = memo(
           }
         },
       };
-    }, [activeConversationId, storedMessages, addMessage, createConversation, bookHash]);
+    }, [bookHash]);
 
     return (
       <AIAssistantWithRuntime
@@ -505,17 +500,18 @@ const AIAssistant = ({ bookKey }: AIAssistantProps) => {
                   {conversations.find((c) => c.id === activeConversationId)?.title || 'New Chat'}
                 </span>
               </span>
-              <div className='flex items-center shrink-0 gap-2'>
+              <div className='flex shrink-0 items-center gap-2'>
                 <select
-                  className='select select-bordered select-xs w-28 bg-base-200'
+                  className='select select-bordered select-xs bg-base-200 w-28'
                   value={promptMode}
                   onChange={(e) => setPromptMode(e.target.value as PromptMode)}
-                  title="Cognitive Mode"
+                  title='Cognitive Mode'
                 >
-                  <option value="standard">标准模式</option>
-                  <option value="devil">反方思辨</option>
-                  <option value="feynman">费曼模式</option>
-                  <option value="discussion">对抗讨论</option>
+                  <option value='standard'>标准模式</option>
+                  <option value='devil'>反方思辨</option>
+                  <option value='feynman'>费曼模式</option>
+                  <option value='radar'>雷达模式</option>
+                  <option value='discussion'>对抗讨论</option>
                 </select>
                 <button
                   onClick={() => setViewMode('history')}
