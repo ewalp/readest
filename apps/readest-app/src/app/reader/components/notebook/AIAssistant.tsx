@@ -515,6 +515,7 @@ const AIAssistant = ({ bookKey }: AIAssistantProps) => {
                   <option value="standard">标准模式</option>
                   <option value="devil">反方思辨</option>
                   <option value="feynman">费曼模式</option>
+                  <option value="discussion">对抗讨论</option>
                 </select>
                 <button
                   onClick={() => setViewMode('history')}

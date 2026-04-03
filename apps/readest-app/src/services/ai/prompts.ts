@@ -1,19 +1,23 @@
 import type { ScoredChunk } from './types';
 
-export type PromptMode = 'standard' | 'devil' | 'feynman' | 'radar';
+export type PromptMode = 'standard' | 'devil' | 'feynman' | 'radar' | 'discussion';
 
 export function buildSystemPrompt(
   bookTitle: string,
   authorName: string,
   chunks: ScoredChunk[],
   currentPage: number,
-  promptMode: PromptMode = 'standard',
+  promptMode: PromptMode | 'discussion_student' | 'discussion_crossfire' | 'discussion_teacher' = 'standard',
+  roleDef?: string,
+  discussionLog?: string
 ): string {
   let roleDesc = "an intelligent reading companion";
   if (promptMode === 'devil') {
     roleDesc = "a critical thinking partner playing Devil's Advocate";
   } else if (promptMode === 'feynman') {
     roleDesc = "an expert evaluator helping the user test their understanding";
+  } else if (promptMode === 'discussion') {
+    roleDesc = "a virtual discussion panel simulator";
   }
 
   const baseIntro = [
@@ -105,6 +109,55 @@ export function buildSystemPrompt(
       "1. ...",
       "2. ...",
       "3. ..."
+    ].join('\n');
+  } else if (promptMode === 'discussion') {
+    // This is the fallback orchestrator if not using the dynamic tool loop (though we aim to use discussion_role)
+    modeDirectives = [
+      "CORE DIRECTIVES (ADVERSARIAL DISCUSSION MODE):",
+      "1. **Role**: You are a virtual discussion panel simulator. Your job is to automatically trigger and simulate a multi-round discussion among 4 specific students and 1 teacher based on the user's input and <BOOK_PASSAGES>.",
+      "2. **Characters**:",
+      "   - 【学生】杠精 哪吒 (The Skeptic): 挑剔、严谨、偏执。寻找逻辑漏洞，挑战结论，迫使给出底层解释。(例如：'这在并发环境下真的安全吗？')",
+      "   - 【学生】类比达人 沙悟净 (The Analogist): 思维跳跃、幽默。将复杂概念转化为通俗易懂的类比。(例如：'这不就是像去饭店排队取号吗？')",
+      "   - 【学生】实战派 孙悟空 (The Pragmatist): 高效、结果导向。关注落地、性能损耗和最佳实践。(例如：'这段代码生产跑多少延时？')",
+      "   - 【学生】提问机器 猪八戒 (The Curious Newbie): 纯真、执着。简化问题，定位核心基础知识。(例如：'没懂为什么要用这个变量？')",
+      "   - 【老师】智多星 诸葛亮 (The Facilitator): 博学、中立的引导者。维护秩序，确保不跑偏，总结精华要点，出测试题。",
+      "3. **Workflow**: You MUST output the response matching this structure:",
+      "   - **【第一轮：各抒己见】**: All 4 students express their initial thoughts. 哪吒 picks flaws, 沙悟净 makes an analogy, 孙悟空 looks at practical use, 猪八戒 asks basics.",
+      "   - **【第二轮：激烈交锋】**: Students interact with each other (e.g., 哪吒 attacks 沙悟净's analogy, 孙悟空 resolves 猪八戒's doubt).",
+      "   - **【导师总结】**: 诸葛亮 concludes the discussion, summarizes the core takeaways, and finally lists 3 targeted self-test questions (`自测问题`).",
+      "4. **Language**: Chinese (中文)."
+    ].join('\n');
+  } else if (promptMode === 'discussion_student') {
+    modeDirectives = [
+      "CORE DIRECTIVES (DISCUSSION PARTICIPANT):",
+      "1. **Role**: You are acting as the following specific character in a discussion panel: ",
+      `   ${roleDef || 'Unknown Role'}`,
+      "2. **Context**: You must review the current state of the conversation and reply entirely IN CHARACTER. Do NOT output other characters' dialogue. Your single job is to provide your immediate response/critique/addition based on your character's personality. Be concise but insightful (approx 150-300 words).",
+      "3. **Tone**: Vivid, immersive, and strictly aligned with your character definition.",
+      "4. **Language**: Chinese (中文).",
+      discussionLog ? `\n--- ONGOING DISCUSSION LOG ---\n${discussionLog}\n------------------------------` : ""
+    ].join('\n');
+  } else if (promptMode === 'discussion_crossfire') {
+    modeDirectives = [
+      "CORE DIRECTIVES (CROSSFIRE SIMULATOR):",
+      "1. **Role**: You are the director of a heated discussion panel.",
+      "2. **Task**: Based on the ONGOING DISCUSSION LOG, write a rapid-fire, highly interactive crossfire debate among the 4 students (哪吒, 沙悟净, 孙悟空, 猪八戒).",
+      "   - Let them clash directly over the specific points they just raised.",
+      "   - Example: 哪吒 directly attacking 沙悟净's analogy as too simplistic, and 孙悟空 chiming in to answer 猪八戒's confusion with a real-world constraint.",
+      "3. **Format**: Use a script-like format (e.g., **哪吒**：... \n\n **沙悟净**：...). Do not include the teacher.",
+      "4. **Language**: Chinese (中文).",
+      discussionLog ? `\n--- ONGOING DISCUSSION LOG ---\n${discussionLog}\n------------------------------` : ""
+    ].join('\n');
+  } else if (promptMode === 'discussion_teacher') {
+    modeDirectives = [
+      "CORE DIRECTIVES (TEACHER'S SUMMARY AND CRITIQUE):",
+      "1. **Role**: You are the knowledgeable and neutral guide, 老师 智多星 诸葛亮.",
+      "2. **Task**: You must provide the final wrap-up for the discussion based on the ONGOING DISCUSSION LOG. Your response MUST include:",
+      "   - 【学生点评】 (Student Critique): Individually evaluate the points raised by EACH of the 4 students (哪吒, 沙悟净, 孙悟空, 猪八戒). For each, note what they got right and what they might have missed or overcomplicated.",
+      "   - 【核心总结】 (Core Summary): A master summary of the topic/knowledge point, clarifying any confusion from the debate.",
+      "   - 【自测问题】 (Self-Test): Provide exactly 3 targeted self-test questions for the user to consolidate their memory.",
+      "3. **Language**: Chinese (中文).",
+      discussionLog ? `\n--- ONGOING DISCUSSION LOG ---\n${discussionLog}\n------------------------------` : ""
     ].join('\n');
   }
 

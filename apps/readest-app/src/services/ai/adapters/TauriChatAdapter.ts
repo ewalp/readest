@@ -24,7 +24,7 @@ interface TauriAdapterOptions {
   authorName: string;
   currentPage: number;
   currentSectionIndex: number;
-  promptMode?: 'standard' | 'devil' | 'feynman' | 'radar';
+  promptMode?: 'standard' | 'devil' | 'feynman' | 'radar' | 'discussion';
 }
 
 async function* streamViaApiRoute(
@@ -133,101 +133,121 @@ export function createTauriAdapter(getOptions: () => TauriAdapterOptions): ChatM
         let text = '';
         console.log('[TauriAdapter] Starting chat request. Provider:', settings.provider);
 
-        if (useApiRoute) {
-          for await (const chunk of streamViaApiRoute(
-            aiMessages,
-            systemPrompt,
-            settings,
-            abortSignal,
-          )) {
-            text += chunk;
-            yield { content: [{ type: 'text', text }] };
-          }
-        } else if (settings.provider === 'openai') {
-          // Manual implementation for OpenAI to bypass SDK issues
-          console.log('[TauriAdapter] Using manual OpenAI streamChat...');
-
-          // Cast to OpenAIProvider to access the new method we just added
-          const openAIProvider = provider as OpenAIProvider;
-
-          try {
+        async function* streamSingleTurn(sysPrompt: string, baseMessages: Array<{ role: 'user' | 'assistant' | 'system' | 'tool'; content: string }>): AsyncGenerator<string> {
+          if (useApiRoute) {
+            for await (const chunk of streamViaApiRoute(baseMessages, sysPrompt, settings, abortSignal)) {
+              yield chunk;
+            }
+          } else if (settings.provider === 'openai') {
+            console.log('[TauriAdapter] Using manual OpenAI streamChat...');
+            const openAIProvider = provider as OpenAIProvider;
             if (typeof openAIProvider.streamChat !== 'function') {
               throw new Error('OpenAI Provider missing streamChat method');
             }
+            try {
+              for await (const chunk of openAIProvider.streamChat(baseMessages, sysPrompt, abortSignal)) {
+                yield chunk;
+              }
+            } catch (err) {
+              const error = err as Error;
+              const isAbort = error.name === 'AbortError' || error.message?.includes('cancelled') || error.message?.includes('Aborted');
+              if (isAbort) throw err;
+              console.error('[TauriAdapter] Manual stream failed:', err);
+              throw err;
+            }
+          } else {
+            try {
+              console.log('[TauriAdapter] calling streamText...');
+              const result = streamText({
+                model: provider.getModel(),
+                system: sysPrompt,
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                messages: baseMessages as any,
+                abortSignal,
+              });
+              let hasChunks = false;
+              for await (const chunk of result.textStream) {
+                if (!hasChunks) console.log('[TauriAdapter] Received first chunk:', chunk);
+                hasChunks = true;
+                yield chunk;
+              }
+              if (!hasChunks) throw new Error('No content received from stream');
+            } catch (streamError) {
+              console.error('[TauriAdapter] Streaming failed:', streamError);
+              const { generateText } = await import('ai');
+              console.log('[TauriAdapter] Retrying with generateText...');
+              const result = await generateText({
+                model: provider.getModel(),
+                system: sysPrompt,
+                // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                messages: baseMessages as any,
+                abortSignal,
+              });
+              console.log('[TauriAdapter] generateText success. Length:', result.text.length);
+              yield result.text;
+            }
+          }
+        }
 
-            for await (const chunk of openAIProvider.streamChat(
-              aiMessages,
-              systemPrompt,
-              abortSignal,
-            )) {
+        if (options.promptMode === 'discussion') {
+          let discussionLog = "";
+
+          const students = [
+            { name: '【学生各抒己见】杠精 哪吒', desc: '杠精 哪吒 (The Skeptic): 挑剔、严谨、偏执。寻找逻辑漏洞，挑战结论，迫使给出底层解释。' },
+            { name: '【学生各抒己见】类比达人 沙悟净', desc: '类比达人 沙悟净 (The Analogist): 思维跳跃、幽默。将复杂概念转化为通俗易懂的类比。' },
+            { name: '【学生各抒己见】实战派 孙悟空', desc: '实战派 孙悟空 (The Pragmatist): 高效、结果导向。关注落地、性能损耗和行业最佳实践。' },
+            { name: '【学生各抒己见】提问机器 猪八戒', desc: '提问机器 猪八戒 (The Curious Newbie): 纯真、执着。简化问题，定位核心基础知识。' }
+          ];
+
+          for (const role of students) {
+            const header = `### ${role.name}\n\n`;
+            text += header;
+            yield { content: [{ type: 'text', text }] };
+
+            const roleSysPrompt = buildSystemPrompt(bookTitle, authorName, chunks, currentPage, 'discussion_student', role.desc, discussionLog);
+            let roleOutput = "";
+
+            for await (const chunk of streamSingleTurn(roleSysPrompt, aiMessages)) {
               text += chunk;
+              roleOutput += chunk;
               yield { content: [{ type: 'text', text }] };
             }
-          } catch (err) {
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
-            const error = err as any;
 
-            const isAbort =
-              error.name === 'AbortError' ||
-              error.message?.includes('cancelled') ||
-              error.message?.includes('Aborted');
+            discussionLog += `${header}${roleOutput}\n\n`;
+            text += '\n\n---\n\n';
+            yield { content: [{ type: 'text', text }] };
+          }
 
-            if (isAbort) {
-              console.log('[TauriAdapter] Manual stream aborted');
-              throw error; // Re-throw to be caught by outer block
-            }
+          const crossfireHeader = `### 【全开麦】激烈交锋\n\n`;
+          text += crossfireHeader;
+          yield { content: [{ type: 'text', text }] };
+          
+          const crossfireSysPrompt = buildSystemPrompt(bookTitle, authorName, chunks, currentPage, 'discussion_crossfire', undefined, discussionLog);
+          let crossfireOutput = "";
 
-            console.error('[TauriAdapter] Manual stream failed:', error);
-            alert('Chat Error: ' + (error.message || 'Unknown error'));
-            throw error;
+          for await (const chunk of streamSingleTurn(crossfireSysPrompt, aiMessages)) {
+            text += chunk;
+            crossfireOutput += chunk;
+            yield { content: [{ type: 'text', text }] };
+          }
+
+          discussionLog += `${crossfireHeader}${crossfireOutput}\n\n`;
+          text += '\n\n---\n\n';
+          yield { content: [{ type: 'text', text }] };
+
+          const teacherHeader = `### 【导师总结与逐一点评】智多星 诸葛亮\n\n`;
+          text += teacherHeader;
+          yield { content: [{ type: 'text', text }] };
+
+          const teacherSysPrompt = buildSystemPrompt(bookTitle, authorName, chunks, currentPage, 'discussion_teacher', undefined, discussionLog);
+          
+          for await (const chunk of streamSingleTurn(teacherSysPrompt, aiMessages)) {
+            text += chunk;
+            yield { content: [{ type: 'text', text }] };
           }
         } else {
-          try {
-            // First try streaming (Ollama, etc)
-            console.log('[TauriAdapter] calling streamText...');
-            const result = streamText({
-              model: provider.getModel(),
-              system: systemPrompt,
-              messages: aiMessages,
-              abortSignal,
-            });
-
-            let hasChunks = false;
-            for await (const chunk of result.textStream) {
-              if (!hasChunks) console.log('[TauriAdapter] Received first chunk:', chunk);
-              hasChunks = true;
-              text += chunk;
-              yield { content: [{ type: 'text', text }] };
-            }
-            console.log('[TauriAdapter] Stream finished. Total length:', text.length);
-
-            // If streaming yielded no chunks, it might be a non-streaming API that behaving oddly with streamText
-            // or simply empty. If empty, we can't do much.
-            if (!hasChunks && text.length === 0) {
-              console.error('[TauriAdapter] No content received from stream');
-              throw new Error('No content received from stream');
-            }
-          } catch (streamError) {
-            console.error('[TauriAdapter] Streaming failed:', streamError);
-            // If streaming fails (e.g. API doesn't support SSE), try non-streaming generateText
-            // This is common with some internal/custom OpenAI-compatible endpoints
-            aiLogger.chat.error(
-              `Streaming failed, retrying with generateText: ${(streamError as Error).message}`,
-            );
-
-            // Re-import generateText dynamically or assume it's available from 'ai'
-            const { generateText } = await import('ai');
-
-            console.log('[TauriAdapter] Retrying with generateText...');
-            const result = await generateText({
-              model: provider.getModel(),
-              system: systemPrompt,
-              messages: aiMessages,
-              abortSignal,
-            });
-
-            text = result.text;
-            console.log('[TauriAdapter] generateText success. Length:', text.length);
+          for await (const chunk of streamSingleTurn(systemPrompt, aiMessages)) {
+            text += chunk;
             yield { content: [{ type: 'text', text }] };
           }
         }
