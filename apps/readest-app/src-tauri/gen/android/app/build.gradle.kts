@@ -16,6 +16,7 @@ val tauriProperties = Properties().apply {
 
 android {
     compileSdk = 36
+    ndkVersion = "30.0.14904198"
     namespace = "com.bilingify.readest"
     val keystorePropertiesFile = rootProject.file("keystore.properties")
     val keystoreProperties = Properties()
