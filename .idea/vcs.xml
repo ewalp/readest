@@ -2,5 +2,10 @@
 <project version="4">
   <component name="VcsDirectoryMappings">
     <mapping directory="" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/packages/foliate-js" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/packages/simplecc-wasm" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/packages/simplecc-wasm/OpenCC" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/packages/tauri" vcs="Git" />
+    <mapping directory="$PROJECT_DIR$/packages/tauri-plugins" vcs="Git" />
   </component>
 </project>
