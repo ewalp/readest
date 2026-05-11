@@ -278,9 +278,13 @@ const AIAssistantWithRuntime = ({
   hasActiveConversation: boolean;
   bookHash: string;
 }) => {
-  const runtime = useLocalRuntime(adapter, {
-    adapters: historyAdapter ? { history: historyAdapter } : undefined,
-  });
+  const config = useMemo(() => {
+    return {
+      adapters: historyAdapter ? { history: historyAdapter } : undefined,
+    };
+  }, [historyAdapter]);
+
+  const runtime = useLocalRuntime(adapter, config);
 
   if (!runtime) return null;
 
