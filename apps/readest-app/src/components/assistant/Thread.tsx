@@ -217,6 +217,10 @@ export const Thread: FC<ThreadProps> = ({
                 role: 'user',
                 content: [{ type: 'text', text: '【本章导读雷达】请根据当前章节内容，提出3个能够激发阅读兴趣、值得深思的核心或者悬念问题，不要剧透。' }]
               });
+              // We need a slight timeout to let the state update before starting the run
+              setTimeout(() => {
+                assistantRuntime.thread.startRun(null);
+              }, 50);
             }}
             className="btn border-base-content/20 bg-base-100 hover:bg-base-200 text-base-content mb-6 shadow-sm btn-sm gap-2 rounded-full font-medium"
           >

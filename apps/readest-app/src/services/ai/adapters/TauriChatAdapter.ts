@@ -358,11 +358,7 @@ export function createTauriAdapter(getOptions: () => TauriAdapterOptions): ChatM
         options;
       let chunks: ScoredChunk[] = [];
 
-      // Pre-create conversation if none exists
-      const { useAIChatStore } = await import('@/store/aiChatStore');
-      if (!useAIChatStore.getState().activeConversationId) {
-        await useAIChatStore.getState().createConversation(bookHash, 'Chat');
-      }
+      // Conversation creation is handled safely by historyAdapter.append
 
       // Check for existing background stream for the SAME book (component remount)
       if (bgStream && bgStream.bookHash === bookHash) {
