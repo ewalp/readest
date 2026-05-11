@@ -231,6 +231,8 @@ const Notebook: React.FC = ({}) => {
   const hasSearchResults = filteredAnnotationNotes.length > 0 || filteredExcerptNotes.length > 0;
   const hasAnyNotes = annotationNotes.length > 0 || excerptNotes.length > 0;
 
+  if (!sideBarBookKey) return null;
+
   return isNotebookVisible ? (
     <>
       {!isNotebookPinned && (

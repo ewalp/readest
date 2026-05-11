@@ -15,7 +15,7 @@ import { useSettingsStore } from '@/store/settingsStore';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { useReaderStore } from '@/store/readerStore';
 import { useAIChatStore } from '@/store/aiChatStore';
-import { createTauriAdapter, getLastSources, clearLastSources } from '@/services/ai';
+import { createTauriAdapter, getLastSources, clearLastSources, cancelBackgroundStream, getBackgroundStream, clearBackgroundStream } from '@/services/ai';
 import type { AISettings, AIMessage } from '@/services/ai/types';
 import type { PromptMode } from '@/services/ai/prompts';
 
@@ -185,6 +185,20 @@ const AIAssistantChat = memo(
       return {
         async load() {
           const storedMessages = useAIChatStore.getState().messages;
+
+          // Check if there's a completed background stream with fuller content
+          const bg = getBackgroundStream();
+          if (bg && bg.bookHash === bookHash && bg.isComplete && bg.fullText) {
+            // Replace the last assistant message content with the complete bg stream text
+            const msgs = storedMessages.map(m => ({ ...m }));
+            const lastAssistantIdx = msgs.length - 1 - [...msgs].reverse().findIndex(m => m.role === 'assistant');
+            if (lastAssistantIdx >= 0 && lastAssistantIdx < msgs.length) {
+              msgs[lastAssistantIdx]!.content = bg.fullText;
+            }
+            clearBackgroundStream();
+            return { messages: convertToExportedMessages(msgs) };
+          }
+
           return {
             messages: convertToExportedMessages(storedMessages),
           };
@@ -192,6 +206,14 @@ const AIAssistantChat = memo(
         async append(item) {
           const msg = item.message;
           if (msg.role === 'system') return;
+
+          // If a background stream is active and this is an assistant message,
+          // skip saving - the background stream will save the complete content itself
+          const bg = getBackgroundStream();
+          if (bg && msg.role === 'assistant') {
+            console.log('[historyAdapter] Skipping partial assistant message save - background stream active');
+            return;
+          }
 
           let conversationId = useAIChatStore.getState().activeConversationId;
           if (!conversationId) {
@@ -226,6 +248,7 @@ const AIAssistantChat = memo(
         onResetIndex={onResetIndex}
         isLoadingHistory={isLoadingHistory}
         hasActiveConversation={!!activeConversationId}
+        bookHash={bookHash}
       />
     );
   },
@@ -239,12 +262,14 @@ const AIAssistantWithRuntime = ({
   onResetIndex,
   isLoadingHistory,
   hasActiveConversation,
+  bookHash,
 }: {
   adapter: NonNullable<ReturnType<typeof createTauriAdapter>>;
   historyAdapter?: ThreadHistoryAdapter;
   onResetIndex: () => void;
   isLoadingHistory: boolean;
   hasActiveConversation: boolean;
+  bookHash: string;
 }) => {
   const runtime = useLocalRuntime(adapter, {
     adapters: historyAdapter ? { history: historyAdapter } : undefined,
@@ -258,6 +283,7 @@ const AIAssistantWithRuntime = ({
         onResetIndex={onResetIndex}
         isLoadingHistory={isLoadingHistory}
         hasActiveConversation={hasActiveConversation}
+        bookHash={bookHash}
       />
     </AssistantRuntimeProvider>
   );
@@ -267,14 +293,30 @@ const ThreadWrapper = ({
   onResetIndex,
   isLoadingHistory,
   hasActiveConversation,
+  bookHash,
 }: {
   onResetIndex: () => void;
   isLoadingHistory: boolean;
   hasActiveConversation: boolean;
+  bookHash: string;
 }) => {
   const [sources, setSources] = useState(getLastSources());
   const assistantRuntime = useAssistantRuntime();
   const { setActiveConversation } = useAIChatStore();
+  const hasResumedRef = useRef(false);
+
+  useEffect(() => {
+    if (!isLoadingHistory && hasActiveConversation && !hasResumedRef.current) {
+      const bg = getBackgroundStream();
+      if (bg && bg.bookHash === bookHash && !bg.isComplete) {
+        hasResumedRef.current = true;
+        setTimeout(() => {
+          console.log('[ThreadWrapper] Found active background stream, triggering startRun to resume UI');
+          assistantRuntime.thread.startRun(null);
+        }, 100);
+      }
+    }
+  }, [isLoadingHistory, hasActiveConversation, bookHash, assistantRuntime.thread]);
 
   useEffect(() => {
     const interval = setInterval(() => {
@@ -284,6 +326,7 @@ const ThreadWrapper = ({
   }, []);
 
   const handleClear = useCallback(() => {
+    cancelBackgroundStream();
     clearLastSources();
     setSources([]);
     setActiveConversation(null);
@@ -437,6 +480,7 @@ const AIAssistant = ({ bookKey }: AIAssistantProps) => {
   }
 
   const handleNewChat = () => {
+    cancelBackgroundStream();
     createConversation(bookHash, 'New Chat');
     setViewMode('chat');
   };
@@ -485,6 +529,7 @@ const AIAssistant = ({ bookKey }: AIAssistantProps) => {
           <ChatHistoryList
             bookHash={bookHash}
             onSelect={(id) => {
+              cancelBackgroundStream();
               setActiveConversation(id);
               setViewMode('chat');
             }}

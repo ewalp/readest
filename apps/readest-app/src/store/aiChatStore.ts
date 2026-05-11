@@ -13,6 +13,7 @@ interface AIChatState {
   setActiveConversation: (id: string | null) => Promise<void>;
   createConversation: (bookHash: string, title: string) => Promise<string>;
   addMessage: (message: Omit<AIMessage, 'id' | 'createdAt'>) => Promise<void>;
+  updateLastAssistantMessage: (content: string) => Promise<void>;
   deleteConversation: (id: string) => Promise<void>;
   renameConversation: (id: string, title: string) => Promise<void>;
   clearActiveConversation: () => void;
@@ -129,6 +130,30 @@ export const useAIChatStore = create<AIChatState>((set, get) => ({
       }));
     } catch (error) {
       console.error('Failed to save message to AI store:', error);
+    }
+  },
+
+  updateLastAssistantMessage: async (content: string) => {
+    const { messages, currentBookHash } = get();
+    if (!currentBookHash) return;
+
+    // Find the last assistant message
+    const lastAssistantIdx = messages.length - 1 - [...messages].reverse().findIndex(m => m.role === 'assistant');
+    if (lastAssistantIdx < 0 || lastAssistantIdx >= messages.length) return;
+
+    const lastAssistant = messages[lastAssistantIdx]!;
+    const updated: AIMessage = { ...lastAssistant, content };
+
+    try {
+      // IndexedDB put() is an upsert — same id overwrites
+      await aiStore.saveMessage(currentBookHash, updated);
+
+      set({
+        messages: messages.map((m, i) => i === lastAssistantIdx ? updated : m),
+      });
+      console.log('[aiChatStore] Updated last assistant message, length:', content.length);
+    } catch (error) {
+      console.error('Failed to update assistant message:', error);
     }
   },
 
