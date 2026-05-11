@@ -13,6 +13,7 @@ interface AIChatState {
   setActiveConversation: (id: string | null) => Promise<void>;
   createConversation: (bookHash: string, title: string) => Promise<string>;
   addMessage: (message: Omit<AIMessage, 'id' | 'createdAt'>) => Promise<void>;
+  saveMessage: (message: AIMessage) => Promise<void>;
   updateLastAssistantMessage: (content: string) => Promise<void>;
   deleteConversation: (id: string) => Promise<void>;
   renameConversation: (id: string, title: string) => Promise<void>;
@@ -128,6 +129,34 @@ export const useAIChatStore = create<AIChatState>((set, get) => ({
       set((state) => ({
         messages: [...state.messages, fullMessage],
       }));
+    } catch (error) {
+      console.error('Failed to save message to AI store:', error);
+    }
+  },
+
+  saveMessage: async (message: AIMessage) => {
+    const { currentBookHash, messages } = get();
+    if (!currentBookHash) return;
+
+    try {
+      const existingIdx = messages.findIndex((m) => m.id === message.id);
+      let messageToSave = message;
+
+      if (existingIdx >= 0) {
+        // Update existing: preserve original createdAt
+        messageToSave = { ...message, createdAt: messages[existingIdx]!.createdAt };
+        const newMessages = [...messages];
+        newMessages[existingIdx] = messageToSave;
+        set({ messages: newMessages });
+      } else {
+        // New message: only append to UI if it's for the currently active conversation
+        if (message.conversationId === get().activeConversationId) {
+          set({ messages: [...messages, message] });
+        }
+      }
+
+      // Persist to IndexedDB
+      await aiStore.saveMessage(currentBookHash, messageToSave);
     } catch (error) {
       console.error('Failed to save message to AI store:', error);
     }

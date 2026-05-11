@@ -78,6 +78,8 @@ interface BackgroundStream {
   fullText: string;
   isComplete: boolean;
   abortController: AbortController;
+  assistantMessageId?: string;
+  conversationId?: string;
 }
 
 let bgStream: BackgroundStream | null = null;
@@ -206,6 +208,9 @@ async function runStreamSingleTurn(
       })();
     }
 
+    let lastSaveTime = Date.now();
+    const SYNC_INTERVAL = 2000; // Sync every 2 seconds
+
     // Process the raw stream with buffer to detect [CONTINUE]
     for await (const chunk of rawStream) {
       if (bgAbortSignal.aborted) return;
@@ -216,6 +221,19 @@ async function runStreamSingleTurn(
         turnText += toYield;
         stream.fullText += toYield;
         stream.queue.push(toYield);
+      }
+
+      // Incremental sync to store so history shows progress
+      if (Date.now() - lastSaveTime > SYNC_INTERVAL && stream.assistantMessageId && stream.conversationId) {
+        lastSaveTime = Date.now();
+        const { useAIChatStore } = await import('@/store/aiChatStore');
+        useAIChatStore.getState().saveMessage({
+          id: stream.assistantMessageId,
+          role: 'assistant',
+          content: stream.fullText,
+          conversationId: stream.conversationId,
+          createdAt: Date.now(),
+        }).catch(err => console.warn('[BackgroundStream] Incremental sync failed:', err));
       }
     }
 
@@ -331,18 +349,20 @@ async function startBackgroundPipeline(
     stream.isComplete = true;
     stream.queue.finish();
 
-    // Update the last assistant message in the store with the complete text
-    // so history loads the full content when the component remounts
-    if (stream.fullText && !bgSignal.aborted) {
+    // Final update of the assistant message in the store
+    if (stream.assistantMessageId && stream.conversationId && stream.fullText && !bgSignal.aborted) {
       try {
         const { useAIChatStore } = await import('@/store/aiChatStore');
-        const state = useAIChatStore.getState();
-        if (state.activeConversationId && state.currentBookHash === stream.bookHash) {
-          await state.updateLastAssistantMessage(stream.fullText);
-          console.log('[BackgroundStream] Updated store with complete response, length:', stream.fullText.length);
-        }
+        await useAIChatStore.getState().saveMessage({
+          id: stream.assistantMessageId,
+          role: 'assistant',
+          content: stream.fullText,
+          conversationId: stream.conversationId,
+          createdAt: Date.now(), // update time
+        });
+        console.log('[BackgroundStream] Final store sync complete, length:', stream.fullText.length);
       } catch (e) {
-        console.error('[BackgroundStream] Failed to update store:', e);
+        console.error('[BackgroundStream] Final store sync failed:', e);
       }
     }
   }
@@ -380,7 +400,7 @@ export function createTauriAdapter(getOptions: () => TauriAdapterOptions): ChatM
           }
         }
 
-        // Done — the background stream already saved to store
+        // After resuming and finishing, clear background state
         bgStream = null;
         aiLogger.chat.complete(text.length);
         return;
@@ -450,6 +470,40 @@ export function createTauriAdapter(getOptions: () => TauriAdapterOptions): ChatM
         abortController: bgAbortController,
       };
       bgStream = stream;
+
+      // START: Persist assistant message immediately so it appears in history
+      const { useAIChatStore } = await import('@/store/aiChatStore');
+      let activeConversationId = useAIChatStore.getState().activeConversationId;
+
+      // If activeConversationId is missing, it might be currently being created by historyAdapter.append
+      // Wait for up to 2 seconds
+      if (!activeConversationId) {
+        console.log('[TauriAdapter] activeConversationId missing, waiting...');
+        let attempts = 0;
+        while (!activeConversationId && attempts < 20) {
+          await new Promise(r => setTimeout(r, 100));
+          activeConversationId = useAIChatStore.getState().activeConversationId;
+          attempts++;
+        }
+      }
+
+      if (!activeConversationId) {
+        console.warn('[TauriAdapter] No active conversation found after waiting, background stream will not persist');
+      } else {
+        // Create the assistant message in the store
+        const assistantMessageId = `${Date.now()}-assistant-${Math.random().toString(36).slice(2, 9)}`;
+        const initialAssistantMsg = {
+          id: assistantMessageId,
+          role: 'assistant' as const,
+          content: '',
+          conversationId: activeConversationId,
+          createdAt: Date.now(),
+        };
+        await useAIChatStore.getState().saveMessage(initialAssistantMsg);
+        stream.assistantMessageId = assistantMessageId;
+        stream.conversationId = activeConversationId;
+      }
+      // END: Persist assistant message
 
       // Start the background pipeline (fire and forget)
       startBackgroundPipeline(stream, options, systemPrompt, aiMessages, chunks);
