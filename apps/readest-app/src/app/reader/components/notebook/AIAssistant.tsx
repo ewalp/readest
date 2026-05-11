@@ -317,13 +317,14 @@ const ThreadWrapper = ({
   const hasResumedRef = useRef(false);
 
   useEffect(() => {
-    if (!isLoadingHistory && hasActiveConversation && !hasResumedRef.current) {
+    const thread = assistantRuntime.thread;
+    if (!isLoadingHistory && hasActiveConversation && !hasResumedRef.current && thread.messages.length === 0) {
       const bg = getBackgroundStream();
       if (bg && bg.bookHash === bookHash && !bg.isComplete) {
         hasResumedRef.current = true;
         setTimeout(() => {
           console.log('[ThreadWrapper] Found active background stream, triggering startRun to resume UI');
-          assistantRuntime.thread.startRun(null);
+          thread.startRun(null);
         }, 100);
       }
     }
