@@ -53,22 +53,53 @@ export async function isBookIndexed(bookHash: string): Promise<boolean> {
 
 function extractTitle(metadata?: BookDoc['metadata']): string {
   if (!metadata?.title) return 'Unknown Book';
-  if (typeof metadata.title === 'string') return metadata.title;
-  // Handle LanguageMap: it has keys like 'en', 'default' or others
-  // The type is defined in utils/book usually, assuming it allows string index
-  const titleObj = metadata.title as Record<string, string>;
-  return titleObj['en'] || titleObj['default'] || Object.values(titleObj)[0] || 'Unknown Book';
+  try {
+    if (typeof metadata.title === 'string') return metadata.title;
+    // LanguageMap: { en: '...', zh: '...', default: '...' }
+    if (typeof metadata.title === 'object' && metadata.title !== null) {
+      const titleObj = metadata.title as Record<string, string>;
+      // Try common keys first, then fall back to any first value
+      return titleObj['en'] || titleObj['default'] || titleObj['zh'] || Object.values(titleObj).find(v => typeof v === 'string' && v.length > 0) || 'Unknown Book';
+    }
+  } catch (e) {
+    console.warn('[RAG] Failed to extract title from metadata:', e);
+  }
+  return 'Unknown Book';
 }
 
 function extractAuthor(metadata?: BookDoc['metadata']): string {
   if (!metadata?.author) return 'Unknown Author';
-  if (typeof metadata.author === 'string') return metadata.author;
+  try {
+    // Simple string
+    if (typeof metadata.author === 'string') return metadata.author;
 
-  // Contributor interface has name: LanguageMap
-  const contributor = metadata.author as { name: Record<string, string> };
-  const nameMap = contributor.name;
+    // Array of strings or Contributor objects
+    if (Array.isArray(metadata.author)) {
+      const names = (metadata.author as Array<string | { name?: Record<string, string> }>)
+        .map(item => {
+          if (typeof item === 'string') return item;
+          if (item && typeof item === 'object' && item.name) {
+            const nameMap = item.name;
+            return nameMap['en'] || nameMap['default'] || nameMap['zh'] || Object.values(nameMap).find(v => typeof v === 'string' && v.length > 0) || '';
+          }
+          return '';
+        })
+        .filter(Boolean);
+      return names.join(', ') || 'Unknown Author';
+    }
 
-  return nameMap['en'] || nameMap['default'] || Object.values(nameMap)[0] || 'Unknown Author';
+    // Single Contributor object: { name: LanguageMap }
+    if (typeof metadata.author === 'object' && metadata.author !== null) {
+      const contributor = metadata.author as { name?: Record<string, string> };
+      if (contributor.name && typeof contributor.name === 'object') {
+        const nameMap = contributor.name;
+        return nameMap['en'] || nameMap['default'] || nameMap['zh'] || Object.values(nameMap).find(v => typeof v === 'string' && v.length > 0) || 'Unknown Author';
+      }
+    }
+  } catch (e) {
+    console.warn('[RAG] Failed to extract author from metadata:', e);
+  }
+  return 'Unknown Author';
 }
 
 function getChapterTitle(toc: BookDoc['toc'], sectionIndex: number): string {

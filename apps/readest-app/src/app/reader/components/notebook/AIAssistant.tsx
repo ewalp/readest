@@ -508,6 +508,7 @@ const AIAssistant = ({ bookKey }: AIAssistantProps) => {
                   title='Cognitive Mode'
                 >
                   <option value='standard'>标准模式</option>
+                  <option value='knowledge'>百科问答</option>
                   <option value='devil'>反方思辨</option>
                   <option value='feynman'>费曼模式</option>
                   <option value='radar'>雷达模式</option>

@@ -24,7 +24,7 @@ interface TauriAdapterOptions {
   authorName: string;
   currentPage: number;
   currentSectionIndex: number;
-  promptMode?: 'standard' | 'devil' | 'feynman' | 'radar' | 'discussion';
+  promptMode?: 'standard' | 'devil' | 'feynman' | 'radar' | 'discussion' | 'knowledge';
 }
 
 async function* streamViaApiRoute(
@@ -68,6 +68,12 @@ export function createTauriAdapter(getOptions: () => TauriAdapterOptions): ChatM
         options;
       const provider = getAIProvider(settings);
       let chunks: ScoredChunk[] = [];
+
+      // Pre-create conversation if none exists, to avoid race condition on first message
+      const { useAIChatStore } = await import('@/store/aiChatStore');
+      if (!useAIChatStore.getState().activeConversationId) {
+        await useAIChatStore.getState().createConversation(bookHash, 'Chat');
+      }
 
       const lastUserMessage = [...messages].reverse().find((m) => m.role === 'user');
       const query =
@@ -134,57 +140,91 @@ export function createTauriAdapter(getOptions: () => TauriAdapterOptions): ChatM
         console.log('[TauriAdapter] Starting chat request. Provider:', settings.provider);
 
         async function* streamSingleTurn(sysPrompt: string, baseMessages: Array<{ role: 'user' | 'assistant' | 'system' | 'tool'; content: string }>): AsyncGenerator<string> {
-          if (useApiRoute) {
-            for await (const chunk of streamViaApiRoute(baseMessages, sysPrompt, settings, abortSignal)) {
+          let currentMessages = [...baseMessages];
+          let keepGoing = true;
+
+          while (keepGoing) {
+            let turnText = '';
+            let buffer = '';
+            const tailLength = 15;
+
+            async function* processRawStream(rawStream: AsyncGenerator<string>) {
+              for await (const chunk of rawStream) {
+                buffer += chunk;
+                if (buffer.length > tailLength) {
+                  const toYield = buffer.slice(0, -tailLength);
+                  buffer = buffer.slice(-tailLength);
+                  turnText += toYield;
+                  yield toYield;
+                }
+              }
+            }
+
+            let rawStream: AsyncGenerator<string>;
+            if (useApiRoute) {
+              rawStream = streamViaApiRoute(currentMessages, sysPrompt, settings, abortSignal);
+            } else if (settings.provider === 'openai') {
+              console.log('[TauriAdapter] Using manual OpenAI streamChat...');
+              const openAIProvider = provider as OpenAIProvider;
+              if (typeof openAIProvider.streamChat !== 'function') {
+                throw new Error('OpenAI Provider missing streamChat method');
+              }
+              rawStream = openAIProvider.streamChat(currentMessages, sysPrompt, abortSignal);
+            } else {
+              rawStream = (async function* () {
+                try {
+                  console.log('[TauriAdapter] calling streamText...');
+                  const result = streamText({
+                    model: provider.getModel(),
+                    system: sysPrompt,
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    messages: currentMessages as any,
+                    abortSignal,
+                  });
+                  let hasChunks = false;
+                  for await (const chunk of result.textStream) {
+                    if (!hasChunks) console.log('[TauriAdapter] Received first chunk:', chunk);
+                    hasChunks = true;
+                    yield chunk;
+                  }
+                  if (!hasChunks) throw new Error('No content received from stream');
+                } catch (streamError) {
+                  console.error('[TauriAdapter] Streaming failed:', streamError);
+                  const { generateText } = await import('ai');
+                  console.log('[TauriAdapter] Retrying with generateText...');
+                  const result = await generateText({
+                    model: provider.getModel(),
+                    system: sysPrompt,
+                    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+                    messages: currentMessages as any,
+                    abortSignal,
+                  });
+                  console.log('[TauriAdapter] generateText success. Length:', result.text.length);
+                  yield result.text;
+                }
+              })();
+            }
+
+            for await (const chunk of processRawStream(rawStream)) {
               yield chunk;
             }
-          } else if (settings.provider === 'openai') {
-            console.log('[TauriAdapter] Using manual OpenAI streamChat...');
-            const openAIProvider = provider as OpenAIProvider;
-            if (typeof openAIProvider.streamChat !== 'function') {
-              throw new Error('OpenAI Provider missing streamChat method');
-            }
-            try {
-              for await (const chunk of openAIProvider.streamChat(baseMessages, sysPrompt, abortSignal)) {
-                yield chunk;
+
+            if (buffer.includes('[CONTINUE]')) {
+              const finalYield = buffer.replace('[CONTINUE]', '');
+              if (finalYield) {
+                turnText += finalYield;
+                yield finalYield;
               }
-            } catch (err) {
-              const error = err as Error;
-              const isAbort = error.name === 'AbortError' || error.message?.includes('cancelled') || error.message?.includes('Aborted');
-              if (isAbort) throw err;
-              console.error('[TauriAdapter] Manual stream failed:', err);
-              throw err;
-            }
-          } else {
-            try {
-              console.log('[TauriAdapter] calling streamText...');
-              const result = streamText({
-                model: provider.getModel(),
-                system: sysPrompt,
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                messages: baseMessages as any,
-                abortSignal,
-              });
-              let hasChunks = false;
-              for await (const chunk of result.textStream) {
-                if (!hasChunks) console.log('[TauriAdapter] Received first chunk:', chunk);
-                hasChunks = true;
-                yield chunk;
+              console.log('[TauriAdapter] Auto-continuing due to [CONTINUE] marker');
+              currentMessages.push({ role: 'assistant', content: turnText });
+              currentMessages.push({ role: 'user', content: '继续' });
+              keepGoing = true;
+            } else {
+              if (buffer) {
+                turnText += buffer;
+                yield buffer;
               }
-              if (!hasChunks) throw new Error('No content received from stream');
-            } catch (streamError) {
-              console.error('[TauriAdapter] Streaming failed:', streamError);
-              const { generateText } = await import('ai');
-              console.log('[TauriAdapter] Retrying with generateText...');
-              const result = await generateText({
-                model: provider.getModel(),
-                system: sysPrompt,
-                // eslint-disable-next-line @typescript-eslint/no-explicit-any
-                messages: baseMessages as any,
-                abortSignal,
-              });
-              console.log('[TauriAdapter] generateText success. Length:', result.text.length);
-              yield result.text;
+              keepGoing = false;
             }
           }
         }
@@ -193,10 +233,11 @@ export function createTauriAdapter(getOptions: () => TauriAdapterOptions): ChatM
           let discussionLog = "";
 
           const students = [
-            { name: '【学生各抒己见】杠精 哪吒', desc: '杠精 哪吒 (The Skeptic): 挑剔、严谨、偏执。寻找逻辑漏洞，挑战结论，迫使给出底层解释。' },
-            { name: '【学生各抒己见】类比达人 沙悟净', desc: '类比达人 沙悟净 (The Analogist): 思维跳跃、幽默。将复杂概念转化为通俗易懂的类比。' },
-            { name: '【学生各抒己见】实战派 孙悟空', desc: '实战派 孙悟空 (The Pragmatist): 高效、结果导向。关注落地、性能损耗和行业最佳实践。' },
-            { name: '【学生各抒己见】提问机器 猪八戒', desc: '提问机器 猪八戒 (The Curious Newbie): 纯真、执着。简化问题，定位核心基础知识。' }
+            { name: '【学生各抒己见】逻辑杠精 独孤败天', desc: '逻辑杠精 独孤败天 (The Skeptic): 万古第一禁忌大神，严谨到恐怖的布局者。不相信任何现成结论，只问"这是天道的谎言吗？"。寻找逻辑死角，挑战权威定义，强迫进行深层推理。标志性口头禅："此法看似圆满，实则破绽百出。若天道反向运行，你这逻辑还站得住吗？"' },
+            { name: '【学生各抒己见】类比达人 紫金神龙', desc: '类比达人 紫金神龙 (The Analogist): 满嘴"嗷呜"、痞气十足的老痞龙。思维跳跃、极其接地气、满脑子损招。最讨厌正经八百的理论，总能把高深概念比喻成最俗最搞笑的段子。标志性口头禅："嗷呜！这什么狗屁原理？说白了不就是……"' },
+            { name: '【学生各抒己见】硬核实战 魔主', desc: '硬核实战 魔主 (The Pragmatist): 千古魔主，效率与力量的极致。霸道、冷酷、追求极致性能。不在乎过程多华丽，只在乎"能杀天吗？"。关注落地实践，剔除一切花架子。标志性口头禅："废话少说，告诉我这一招的杀伤力是多少？用不出来，那就是垃圾。"' },
+            { name: '【学生各抒己见】提问机器 龙宝宝', desc: '提问机器 龙宝宝 (The Curious Newbie): 爱吃果子、人畜无害的小豆丁。纯真、执着、大智若愚。用最天真的语气问出最根本的问题。标志性口头禅："神说，偶听不懂。那个叫XX的东西，能吃吗？"' },
+            { name: '【学生各抒己见】调皮学霸 辰南', desc: '调皮学霸 辰南 (The Innovator): 万古布局中的一线生机，不按常理出牌的天才。机灵、坚韧、擅长在绝境中找"外挂"。尊重规则但更擅长利用规则漏洞。标志性口头禅："按部就班太慢了，咱们直接挖它祖坟（底层源码），能不能拿到结果？"' }
           ];
 
           for (const role of students) {
@@ -235,7 +276,7 @@ export function createTauriAdapter(getOptions: () => TauriAdapterOptions): ChatM
           text += '\n\n---\n\n';
           yield { content: [{ type: 'text', text }] };
 
-          const teacherHeader = `### 【导师总结与逐一点评】智多星 诸葛亮\n\n`;
+          const teacherHeader = `### 【真相揭示】工藤新一\n\n`;
           text += teacherHeader;
           yield { content: [{ type: 'text', text }] };
 
