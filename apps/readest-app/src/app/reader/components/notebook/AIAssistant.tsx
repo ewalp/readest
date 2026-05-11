@@ -318,7 +318,7 @@ const ThreadWrapper = ({
 
   useEffect(() => {
     const thread = assistantRuntime.thread;
-    if (!isLoadingHistory && hasActiveConversation && !hasResumedRef.current && thread.messages.length === 0) {
+    if (!isLoadingHistory && hasActiveConversation && !hasResumedRef.current && thread.getState().messages.length === 0) {
       const bg = getBackgroundStream();
       if (bg && bg.bookHash === bookHash && !bg.isComplete) {
         hasResumedRef.current = true;
