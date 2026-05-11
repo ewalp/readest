@@ -182,6 +182,8 @@ const AIAssistantChat = memo(
 
     // Create history adapter to load/persist messages
     const historyAdapter = useMemo<ThreadHistoryAdapter>(() => {
+      let pendingConversationPromise: Promise<string> | null = null;
+
       return {
         async load() {
           const storedMessages = useAIChatStore.getState().messages;
@@ -217,7 +219,12 @@ const AIAssistantChat = memo(
 
           let conversationId = useAIChatStore.getState().activeConversationId;
           if (!conversationId) {
-            conversationId = await useAIChatStore.getState().createConversation(bookHash, 'Chat');
+            if (!pendingConversationPromise) {
+              pendingConversationPromise = useAIChatStore.getState().createConversation(bookHash, 'Chat').finally(() => {
+                pendingConversationPromise = null;
+              });
+            }
+            conversationId = await pendingConversationPromise;
           }
 
           if (conversationId) {
