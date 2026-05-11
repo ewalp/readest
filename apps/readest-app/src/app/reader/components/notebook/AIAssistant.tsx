@@ -380,6 +380,7 @@ const AIAssistant = ({ bookKey }: AIAssistantProps) => {
   const [indexed, setIndexed] = useState(false);
   const [viewMode, setViewMode] = useState<'chat' | 'history'>('chat');
   const [promptMode, setPromptMode] = useState<PromptMode>('standard');
+  const [chatSessionId, setChatSessionId] = useState<string>(() => Date.now().toString());
 
   const {
     loadConversations,
@@ -404,7 +405,9 @@ const AIAssistant = ({ bookKey }: AIAssistantProps) => {
     // Check if we need to restore a session
     if (!activeConversationId && conversations.length > 0) {
       const mostRecent = conversations[0]!;
-      setActiveConversation(mostRecent.id);
+      setActiveConversation(mostRecent.id).then(() => {
+        setChatSessionId(mostRecent.id);
+      });
     }
   }, [bookHash, isLoadingHistory, conversations, activeConversationId, setActiveConversation]);
 
@@ -493,7 +496,9 @@ const AIAssistant = ({ bookKey }: AIAssistantProps) => {
 
   const handleNewChat = () => {
     cancelBackgroundStream();
-    createConversation(bookHash, 'New Chat');
+    createConversation(bookHash, 'New Chat').then((id) => {
+      setChatSessionId(id);
+    });
     setViewMode('chat');
   };
 
@@ -540,9 +545,10 @@ const AIAssistant = ({ bookKey }: AIAssistantProps) => {
         {viewMode === 'history' ? (
           <ChatHistoryList
             bookHash={bookHash}
-            onSelect={(id) => {
+            onSelect={async (id) => {
               cancelBackgroundStream();
-              setActiveConversation(id);
+              await setActiveConversation(id);
+              setChatSessionId(id);
               setViewMode('chat');
             }}
             onClose={() => setViewMode('chat')}
@@ -589,6 +595,7 @@ const AIAssistant = ({ bookKey }: AIAssistantProps) => {
             </div>
             <div className='relative flex-1 overflow-hidden'>
               <AIAssistantChat
+                key={chatSessionId}
                 aiSettings={aiSettings}
                 bookHash={bookHash}
                 bookTitle={bookTitle}
