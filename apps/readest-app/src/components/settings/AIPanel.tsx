@@ -91,6 +91,33 @@ const AIPanel: React.FC = () => {
   const [openAiEmbeddingModel, setOpenAiEmbeddingModel] = useState(
     aiSettings.openAiEmbeddingModel || '',
   );
+  const [openAiCustomParams, setOpenAiCustomParams] = useState(aiSettings.openAiCustomParams || '');
+  const [openAiCustomParamsError, setOpenAiCustomParamsError] = useState('');
+
+  const [deepseekBaseUrl, setDeepseekBaseUrl] = useState(
+    aiSettings.deepseekBaseUrl || 'https://api.deepseek.com',
+  );
+  const [deepseekApiKey, setDeepseekApiKey] = useState(aiSettings.deepseekApiKey || '');
+  const [deepseekModel, setDeepseekModel] = useState(aiSettings.deepseekModel || 'deepseek-v4-pro');
+  const [deepseekEmbeddingModel, setDeepseekEmbeddingModel] = useState(
+    aiSettings.deepseekEmbeddingModel || 'deepseek-v4-flash',
+  );
+
+  const handleOpenAiCustomParamsChange = (value: string) => {
+    setOpenAiCustomParams(value);
+    if (!value.trim()) {
+      setOpenAiCustomParamsError('');
+      saveAiSetting('openAiCustomParams', '');
+      return;
+    }
+    try {
+      JSON.parse(value);
+      setOpenAiCustomParamsError('');
+      saveAiSetting('openAiCustomParams', value);
+    } catch {
+      setOpenAiCustomParamsError(_('Invalid JSON format'));
+    }
+  };
 
   const savedCustomModel = aiSettings.aiGatewayCustomModel ?? '';
   const savedModel = aiSettings.aiGatewayModel ?? DEFAULT_AI_SETTINGS.aiGatewayModel ?? '';
@@ -256,6 +283,34 @@ const AIPanel: React.FC = () => {
     }
   }, [openAiEmbeddingModel]);
 
+  useEffect(() => {
+    if (!isMounted.current) return;
+    if (deepseekBaseUrl !== aiSettings.deepseekBaseUrl) {
+      saveAiSetting('deepseekBaseUrl', deepseekBaseUrl);
+    }
+  }, [deepseekBaseUrl]);
+
+  useEffect(() => {
+    if (!isMounted.current) return;
+    if (deepseekApiKey !== aiSettings.deepseekApiKey) {
+      saveAiSetting('deepseekApiKey', deepseekApiKey);
+    }
+  }, [deepseekApiKey]);
+
+  useEffect(() => {
+    if (!isMounted.current) return;
+    if (deepseekModel !== aiSettings.deepseekModel) {
+      saveAiSetting('deepseekModel', deepseekModel);
+    }
+  }, [deepseekModel]);
+
+  useEffect(() => {
+    if (!isMounted.current) return;
+    if (deepseekEmbeddingModel !== aiSettings.deepseekEmbeddingModel) {
+      saveAiSetting('deepseekEmbeddingModel', deepseekEmbeddingModel);
+    }
+  }, [deepseekEmbeddingModel]);
+
   // Get the effective model ID to use (either selected or custom)
   const getEffectiveModelId = useCallback(() => {
     if (selectedModel === CUSTOM_MODEL_VALUE && customModelStatus === 'valid') {
@@ -350,6 +405,11 @@ const AIPanel: React.FC = () => {
         openAiApiKey,
         openAiModel,
         openAiEmbeddingModel,
+        openAiCustomParams,
+        deepseekBaseUrl,
+        deepseekApiKey,
+        deepseekModel,
+        deepseekEmbeddingModel,
       };
 
       const aiProvider = getAIProvider(testSettings);
@@ -363,7 +423,9 @@ const AIPanel: React.FC = () => {
             ? _("Couldn't connect to Ollama. Is it running?")
             : provider === 'openai'
               ? _('Connection failed. Check URL and Key.')
-              : _('Invalid API key or connection failed'),
+              : provider === 'deepseek'
+                ? _('DeepSeek connection failed. Check URL and Key.')
+                : _('Invalid API key or connection failed'),
         );
       }
     } catch (error) {
@@ -464,6 +526,17 @@ const AIPanel: React.FC = () => {
                 className='radio'
                 checked={provider === 'openai'}
                 onChange={() => setProvider('openai')}
+                disabled={!enabled}
+              />
+            </div>
+            <div className='config-item'>
+              <span>{_('DeepSeek')}</span>
+              <input
+                type='radio'
+                name='ai-provider'
+                className='radio'
+                checked={provider === 'deepseek'}
+                onChange={() => setProvider('deepseek')}
                 disabled={!enabled}
               />
             </div>
@@ -684,6 +757,90 @@ const AIPanel: React.FC = () => {
                   placeholder='text-embedding-3-small'
                   disabled={!enabled}
                 />
+              </div>
+              <div className='config-item !h-auto flex-col !items-start gap-2 py-3'>
+                <span>{_('Custom Request Parameters (JSON)')}</span>
+                <textarea
+                  className={clsx(
+                    'textarea textarea-bordered w-full font-mono text-xs',
+                    openAiCustomParamsError ? 'textarea-error' : ''
+                  )}
+                  rows={3}
+                  value={openAiCustomParams}
+                  onChange={(e) => handleOpenAiCustomParamsChange(e.target.value)}
+                  placeholder='{"thinking": {"type": "disabled"}}'
+                  disabled={!enabled}
+                />
+                {openAiCustomParamsError ? (
+                  <div className='text-error text-xs'>{openAiCustomParamsError}</div>
+                ) : (
+                  <div className='text-base-content/60 text-xs'>
+                    {_('Optional. Custom parameters merged directly into the API request body. Example: {"temperature": 0.7}')}
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {provider === 'deepseek' && (
+        <div className={clsx('w-full', disabledSection)}>
+          <h2 className='mb-2 font-medium'>{_('DeepSeek Configuration')}</h2>
+          <div className='card border-base-200 bg-base-100 border shadow'>
+            <div className='divide-base-200 divide-y'>
+              <div className='config-item !h-auto flex-col !items-start gap-2 py-3'>
+                <span>{_('Base URL')}</span>
+                <input
+                  type='text'
+                  className='input input-bordered input-sm w-full'
+                  value={deepseekBaseUrl}
+                  onChange={(e) => setDeepseekBaseUrl(e.target.value)}
+                  placeholder='https://api.deepseek.com'
+                  disabled={!enabled}
+                />
+                <div className='text-base-content/60 text-xs'>
+                  {_('Note: Keep https://api.deepseek.com or change to a custom DeepSeek-compatible endpoint.')}
+                </div>
+              </div>
+              <div className='config-item !h-auto flex-col !items-start gap-2 py-3'>
+                <span>{_('API Key')}</span>
+                <input
+                  type='password'
+                  className='input input-bordered input-sm w-full'
+                  value={deepseekApiKey}
+                  onChange={(e) => setDeepseekApiKey(e.target.value)}
+                  placeholder='sk-...'
+                  disabled={!enabled}
+                />
+              </div>
+              <div className='config-item !h-auto flex-col !items-start gap-2 py-3'>
+                <span>{_('Model')}</span>
+                <input
+                  type='text'
+                  className='input input-bordered input-sm w-full'
+                  value={deepseekModel}
+                  onChange={(e) => setDeepseekModel(e.target.value)}
+                  placeholder='deepseek-v4-pro'
+                  disabled={!enabled}
+                />
+                <div className='text-base-content/60 text-xs'>
+                  {_('Note: Dialog will automatically disable thinking mode and lock temperature to 0.0.')}
+                </div>
+              </div>
+              <div className='config-item !h-auto flex-col !items-start gap-2 py-3'>
+                <span>{_('Embedding Model')}</span>
+                <input
+                  type='text'
+                  className='input input-bordered input-sm w-full'
+                  value={deepseekEmbeddingModel}
+                  onChange={(e) => setDeepseekEmbeddingModel(e.target.value)}
+                  placeholder='deepseek-v4-flash'
+                  disabled={!enabled}
+                />
+                <div className='text-base-content/60 text-xs'>
+                  {_('Note: Used to generate vector embeddings for book searches and indexing.')}
+                </div>
               </div>
             </div>
           </div>

@@ -30,6 +30,10 @@ export const DEFAULT_AI_SETTINGS: AISettings = {
   aiGatewayModel: 'google/gemini-2.5-flash-lite',
   aiGatewayEmbeddingModel: 'openai/text-embedding-3-small',
 
+  deepseekBaseUrl: 'https://api.deepseek.com',
+  deepseekModel: 'deepseek-v4-pro',
+  deepseekEmbeddingModel: 'deepseek-v4-flash',
+
   spoilerProtection: true,
   maxContextChunks: 10,
   indexingMode: 'on-demand',

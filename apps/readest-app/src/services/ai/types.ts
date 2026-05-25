@@ -1,6 +1,6 @@
 import type { LanguageModel, EmbeddingModel } from 'ai';
 
-export type AIProviderName = 'ollama' | 'ai-gateway' | 'openai';
+export type AIProviderName = 'ollama' | 'ai-gateway' | 'openai' | 'deepseek';
 
 export interface AIProvider {
   id: AIProviderName;
@@ -31,6 +31,12 @@ export interface AISettings {
   openAiApiKey?: string;
   openAiModel?: string;
   openAiEmbeddingModel?: string;
+  openAiCustomParams?: string;
+
+  deepseekBaseUrl?: string;
+  deepseekApiKey?: string;
+  deepseekModel?: string;
+  deepseekEmbeddingModel?: string;
 
   spoilerProtection: boolean;
   maxContextChunks: number;

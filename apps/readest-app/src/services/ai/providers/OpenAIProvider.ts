@@ -32,7 +32,7 @@ export class OpenAIProvider implements AIProvider {
       try {
         const urlObj = new URL(rawBaseURL);
         this.extraHeaders['Host'] = urlObj.host;
-      } catch (e) {
+      } catch {
         this.extraHeaders['Host'] = INTERNAL_API_DOMAIN + ':6363';
       }
     } else {
@@ -65,10 +65,20 @@ export class OpenAIProvider implements AIProvider {
       ...this.extraHeaders,
     });
 
+    let customParams: Record<string, unknown> = {};
+    if (this.settings.openAiCustomParams) {
+      try {
+        customParams = JSON.parse(this.settings.openAiCustomParams);
+      } catch (e) {
+        console.warn('[OpenAIProvider] Failed to parse openAiCustomParams:', e);
+      }
+    }
+
     const body = JSON.stringify({
       model: this.settings.openAiModel || 'gpt-4o-mini',
       messages: [{ role: 'system', content: systemPrompt }, ...messages],
       stream: true,
+      ...customParams,
     });
 
     console.log('[OpenAIProvider] Request Body:', body);

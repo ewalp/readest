@@ -1,7 +1,7 @@
 import { streamText } from 'ai';
 import type { ChatModelAdapter, ChatModelRunResult } from '@assistant-ui/react';
 import { getAIProvider } from '../providers';
-import { OpenAIProvider } from '../providers/OpenAIProvider';
+
 import { hybridSearch, isBookIndexed, getChapterContextChunks } from '../ragService';
 import { aiLogger } from '../logger';
 import { buildSystemPrompt } from '../prompts';
@@ -154,7 +154,7 @@ async function runStreamSingleTurn(
   provider: ReturnType<typeof getAIProvider>,
   useApiRoute: boolean,
 ): Promise<void> {
-  let currentMessages = [...baseMessages];
+  const currentMessages = [...baseMessages];
   let keepGoing = true;
 
   while (keepGoing) {
@@ -168,12 +168,13 @@ async function runStreamSingleTurn(
     let rawStream: AsyncGenerator<string>;
     if (useApiRoute) {
       rawStream = streamViaApiRoute(currentMessages, sysPrompt, settings, bgAbortSignal);
-    } else if (settings.provider === 'openai') {
-      const openAIProvider = provider as OpenAIProvider;
-      if (typeof openAIProvider.streamChat !== 'function') {
-        throw new Error('OpenAI Provider missing streamChat method');
+    } else if (settings.provider === 'openai' || settings.provider === 'deepseek') {
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const anyProvider = provider as any;
+      if (typeof anyProvider.streamChat !== 'function') {
+        throw new Error(`${settings.provider} Provider missing streamChat method`);
       }
-      rawStream = openAIProvider.streamChat(currentMessages, sysPrompt, bgAbortSignal);
+      rawStream = anyProvider.streamChat(currentMessages, sysPrompt, bgAbortSignal);
     } else {
       rawStream = (async function* () {
         try {

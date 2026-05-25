@@ -194,7 +194,9 @@ export async function indexBook(
         ? settings.ollamaEmbeddingModel
         : settings.provider === 'openai'
           ? settings.openAiEmbeddingModel || 'text-embedding-3-small'
-          : settings.aiGatewayEmbeddingModel || 'text-embedding-3-small';
+          : settings.provider === 'deepseek'
+            ? settings.deepseekEmbeddingModel || 'deepseek-v4-flash'
+            : settings.aiGatewayEmbeddingModel || 'text-embedding-3-small';
     aiLogger.embedding.start(embeddingModelName, allChunks.length);
 
     const texts = allChunks.map((c) => c.text);
@@ -232,6 +234,57 @@ export async function indexBook(
               if (!response.ok) {
                 const errText = await response.text();
                 throw new Error(`OpenAI Embedding ${response.status}: ${errText}`);
+              }
+              const data = (await response.json()) as {
+                data: Array<{ embedding: number[]; index: number }>;
+              };
+              return data.data.sort((a, b) => a.index - b.index).map((d) => d.embedding);
+            },
+            AI_TIMEOUTS.EMBEDDING_BATCH,
+            AI_RETRY_CONFIGS.EMBEDDING,
+          );
+
+          embeddings.push(...batchEmbeddings);
+
+          // Update progress roughly
+          const currentProcessed = i + batch.length;
+          onProgress?.({
+            current: currentProcessed,
+            total: texts.length,
+            phase: 'embedding',
+          });
+        }
+      } else if (settings.provider === 'deepseek') {
+        const BATCH_SIZE = 5;
+        for (let i = 0; i < texts.length; i += BATCH_SIZE) {
+          if (abortSignal?.aborted) throw new Error('Indexing aborted');
+          const batch = texts.slice(i, i + BATCH_SIZE);
+
+          const batchEmbeddings = await withRetryAndTimeout(
+            async () => {
+              const modelId = settings.deepseekEmbeddingModel || 'deepseek-v4-flash';
+              const baseUrl = settings.deepseekBaseUrl || 'https://api.deepseek.com';
+              const url = baseUrl.endsWith('/embeddings')
+                ? baseUrl
+                : baseUrl.replace(/\/+$/, '') + '/embeddings';
+
+              const response = await fetch(url, {
+                method: 'POST',
+                headers: {
+                  'Content-Type': 'application/json',
+                  Authorization: `Bearer ${settings.deepseekApiKey}`,
+                },
+                body: JSON.stringify({
+                  model: modelId,
+                  input: batch,
+                  encoding_format: 'float',
+                }),
+                signal: abortSignal,
+              });
+
+              if (!response.ok) {
+                const errText = await response.text();
+                throw new Error(`DeepSeek Embedding ${response.status}: ${errText}`);
               }
               const data = (await response.json()) as {
                 data: Array<{ embedding: number[]; index: number }>;
@@ -340,6 +393,41 @@ export async function hybridSearch(
     if (settings.provider === 'openai') {
       const embeddings = await withRetryAndTimeout(
         () => fetchOpenAIEmbeddings(settings, [query]),
+        AI_TIMEOUTS.EMBEDDING_SINGLE,
+        AI_RETRY_CONFIGS.EMBEDDING,
+      );
+      queryEmbedding = embeddings[0] || null;
+    } else if (settings.provider === 'deepseek') {
+      const embeddings = await withRetryAndTimeout(
+        async () => {
+          const modelId = settings.deepseekEmbeddingModel || 'deepseek-v4-flash';
+          const baseUrl = settings.deepseekBaseUrl || 'https://api.deepseek.com';
+          const url = baseUrl.endsWith('/embeddings')
+            ? baseUrl
+            : baseUrl.replace(/\/+$/, '') + '/embeddings';
+
+          const response = await fetch(url, {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: `Bearer ${settings.deepseekApiKey}`,
+            },
+            body: JSON.stringify({
+              model: modelId,
+              input: [query],
+              encoding_format: 'float',
+            }),
+          });
+
+          if (!response.ok) {
+            const errText = await response.text();
+            throw new Error(`DeepSeek Embedding ${response.status}: ${errText}`);
+          }
+          const data = (await response.json()) as {
+            data: Array<{ embedding: number[]; index: number }>;
+          };
+          return data.data.sort((a, b) => a.index - b.index).map((d) => d.embedding);
+        },
         AI_TIMEOUTS.EMBEDDING_SINGLE,
         AI_RETRY_CONFIGS.EMBEDDING,
       );

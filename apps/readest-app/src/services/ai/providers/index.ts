@@ -1,9 +1,10 @@
 import { OllamaProvider } from './OllamaProvider';
 import { AIGatewayProvider } from './AIGatewayProvider';
 import { OpenAIProvider } from './OpenAIProvider';
+import { DeepSeekProvider } from './DeepSeekProvider';
 import type { AIProvider, AISettings } from '../types';
 
-export { OllamaProvider, AIGatewayProvider, OpenAIProvider };
+export { OllamaProvider, AIGatewayProvider, OpenAIProvider, DeepSeekProvider };
 
 export function getAIProvider(settings: AISettings): AIProvider {
   switch (settings.provider) {
@@ -16,6 +17,8 @@ export function getAIProvider(settings: AISettings): AIProvider {
       return new AIGatewayProvider(settings);
     case 'openai':
       return new OpenAIProvider(settings);
+    case 'deepseek':
+      return new DeepSeekProvider(settings);
     default:
       throw new Error(`Unknown provider: ${settings.provider}`);
   }

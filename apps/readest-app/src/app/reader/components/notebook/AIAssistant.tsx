@@ -182,7 +182,7 @@ const AIAssistantChat = memo(
 
     // Create history adapter to load/persist messages
     const historyAdapter = useMemo<ThreadHistoryAdapter>(() => {
-      let pendingConversationPromise: Promise<string> | null = null;
+      const stateObj = { pendingConversationPromise: null as Promise<string> | null };
 
       return {
         async load() {
@@ -209,22 +209,20 @@ const AIAssistantChat = memo(
           const msg = item.message;
           if (msg.role === 'system') return;
 
-          // If a background stream is active and this is an assistant message,
-          // skip saving - the background stream will save the complete content itself
-          const bg = getBackgroundStream();
-          if (bg && msg.role === 'assistant') {
-            console.log('[historyAdapter] Skipping partial assistant message save - background stream active');
+          // Assistant messages are completely managed by TauriChatAdapter background stream logic
+          if (msg.role === 'assistant') {
+            console.log('[historyAdapter] Skipping assistant message save - managed by background stream');
             return;
           }
 
           let conversationId = useAIChatStore.getState().activeConversationId;
           if (!conversationId) {
-            if (!pendingConversationPromise) {
-              pendingConversationPromise = useAIChatStore.getState().createConversation(bookHash, 'Chat').finally(() => {
-                pendingConversationPromise = null;
+            if (!stateObj.pendingConversationPromise) {
+              stateObj.pendingConversationPromise = useAIChatStore.getState().createConversation(bookHash, 'Chat').finally(() => {
+                stateObj.pendingConversationPromise = null;
               });
             }
-            conversationId = await pendingConversationPromise;
+            conversationId = await stateObj.pendingConversationPromise;
           }
 
           if (conversationId) {
