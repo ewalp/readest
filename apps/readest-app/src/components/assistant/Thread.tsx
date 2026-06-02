@@ -32,6 +32,7 @@ import {
 } from 'lucide-react';
 
 import { MarkdownText } from './MarkdownText';
+import { RoseCurveLoader } from './RoseCurveLoader';
 import { Button } from '@/components/ui/button';
 import {
   DropdownMenu,
@@ -369,6 +370,12 @@ const AssistantMessage: FC<AssistantMessageProps> = ({ sources = [], fontSize = 
             }
           >
             <MessagePrimitive.Parts components={{ Text: MarkdownText }} />
+            <AssistantIf condition={(s) => s.message.status?.type === 'running'}>
+              <div className='mt-3 flex items-center gap-2.5 text-primary/80'>
+                <RoseCurveLoader size={24} k={5} particleCount={8} />
+                <span className='text-base-content/40 text-xs tracking-wider animate-pulse'>AI is responding...</span>
+              </div>
+            </AssistantIf>
           </div>
         </div>
 

@@ -185,6 +185,7 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_sharekit::init())
         .plugin(tauri_plugin_native_bridge::init())
+        .plugin(tauri_plugin_sql::Builder::default().build())
         .plugin(tauri_plugin_native_tts::init());
 
     #[cfg(desktop)]

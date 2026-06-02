@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo, useRef, memo } from 'react';
-import { History, Plus, Trash2, ArrowLeft, MessageSquare } from 'lucide-react';
+import { History, Plus, Trash2, ArrowLeft, MessageSquare, Pencil } from 'lucide-react';
 import {
   AssistantRuntimeProvider,
   useLocalRuntime,
@@ -64,7 +64,7 @@ const ChatHistoryList = ({
   onSelect: (id: string) => void;
   onClose: () => void;
 }) => {
-  const { conversations, deleteConversation, loadConversations } = useAIChatStore();
+  const { conversations, deleteConversation, renameConversation, loadConversations } = useAIChatStore();
 
   useEffect(() => {
     if (bookHash) loadConversations(bookHash);
@@ -98,21 +98,37 @@ const ChatHistoryList = ({
             className='card bg-base-200 hover:bg-base-300 flex cursor-pointer flex-row items-center justify-between p-3 shadow-sm transition-colors'
             onClick={() => onSelect(c.id)}
           >
-            <div className='flex flex-col overflow-hidden'>
+            <div className='flex flex-1 flex-col overflow-hidden mr-2'>
               <span className='truncate font-medium'>{c.title || 'Chat'}</span>
               <span className='text-xs opacity-70'>{new Date(c.updatedAt).toLocaleString()}</span>
             </div>
-            <button
-              onClick={(e) => {
-                e.stopPropagation();
-                if (confirm('Delete this conversation?')) {
-                  deleteConversation(c.id);
-                }
-              }}
-              className='btn btn-ghost text-error btn-square btn-xs'
-            >
-              <Trash2 className='size-4' />
-            </button>
+            <div className='flex items-center gap-1 shrink-0'>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  const newTitle = prompt('Rename conversation', c.title);
+                  if (newTitle && newTitle.trim()) {
+                    renameConversation(c.id, newTitle.trim());
+                  }
+                }}
+                className='btn btn-ghost text-base-content/60 hover:text-base-content btn-square btn-xs'
+                title='Rename'
+              >
+                <Pencil className='size-3.5' />
+              </button>
+              <button
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (confirm('Delete this conversation?')) {
+                    deleteConversation(c.id);
+                  }
+                }}
+                className='btn btn-ghost text-error btn-square btn-xs'
+                title='Delete'
+              >
+                <Trash2 className='size-4' />
+              </button>
+            </div>
           </div>
         ))}
       </div>

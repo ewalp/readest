@@ -1,8 +1,55 @@
 import { TextChunk, ScoredChunk, BookIndexMeta, AIConversation, AIMessage } from '../types';
 import { aiLogger } from '../logger';
+import { isTauriAppPlatform } from '@/services/environment';
 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const lunr = require('lunr') as typeof import('lunr');
+
+let sqliteDbPromise: Promise<any> | null = null;
+async function getSqliteDb() {
+  if (!isTauriAppPlatform()) return null;
+  if (sqliteDbPromise) return sqliteDbPromise;
+
+  sqliteDbPromise = (async () => {
+    try {
+      const { default: Database } = await import('@tauri-apps/plugin-sql');
+      const db = await Database.load('sqlite:readest_ai.db');
+      
+      // Initialize tables
+      await db.execute(`
+        CREATE TABLE IF NOT EXISTS conversations (
+          id TEXT PRIMARY KEY,
+          bookHash TEXT NOT NULL,
+          title TEXT NOT NULL,
+          createdAt INTEGER NOT NULL,
+          updatedAt INTEGER NOT NULL
+        );
+      `);
+      
+      await db.execute(`
+        CREATE TABLE IF NOT EXISTS messages (
+          id TEXT PRIMARY KEY,
+          conversationId TEXT NOT NULL,
+          role TEXT NOT NULL,
+          content TEXT NOT NULL,
+          createdAt INTEGER NOT NULL
+        );
+      `);
+      
+      await db.execute(`
+        CREATE INDEX IF NOT EXISTS idx_messages_conversationId ON messages(conversationId);
+      `);
+
+      return db;
+    } catch (err: any) {
+      aiLogger.store.error('Failed to initialize SQLite database', err?.message || err);
+      sqliteDbPromise = null;
+      return null;
+    }
+  })();
+
+  return sqliteDbPromise;
+}
 
 const DB_PREFIX = 'readest-ai-';
 const DB_VERSION = 1; // New isolated DBs start at version 1
@@ -343,6 +390,16 @@ class AIStore {
   // conversation persistence methods
 
   async saveConversation(conversation: AIConversation): Promise<void> {
+    const sdb = await getSqliteDb();
+    if (sdb) {
+      await sdb.execute(
+        `INSERT OR REPLACE INTO conversations (id, bookHash, title, createdAt, updatedAt) VALUES ($1, $2, $3, $4, $5)`,
+        [conversation.id, conversation.bookHash, conversation.title, conversation.createdAt, conversation.updatedAt]
+      );
+      this.conversationCache.delete(conversation.bookHash);
+      return;
+    }
+
     const db = await this.openDB(conversation.bookHash);
     return new Promise((resolve, reject) => {
       const tx = db.transaction(CONVERSATIONS_STORE, 'readwrite');
@@ -362,6 +419,17 @@ class AIStore {
     if (this.conversationCache.has(bookHash)) {
       return this.conversationCache.get(bookHash)!;
     }
+
+    const sdb = await getSqliteDb();
+    if (sdb) {
+      const rows = (await sdb.select(
+        `SELECT * FROM conversations WHERE bookHash = $1 ORDER BY updatedAt DESC`,
+        [bookHash]
+      )) as AIConversation[];
+      this.conversationCache.set(bookHash, rows);
+      return rows;
+    }
+
     const db = await this.openDB(bookHash);
     return new Promise((resolve, reject) => {
       const req = db
@@ -382,6 +450,14 @@ class AIStore {
 
   // UPDATED: Now requires bookHash to know which DB to open
   async deleteConversation(bookHash: string, id: string): Promise<void> {
+    const sdb = await getSqliteDb();
+    if (sdb) {
+      await sdb.execute(`DELETE FROM conversations WHERE id = $1`, [id]);
+      await sdb.execute(`DELETE FROM messages WHERE conversationId = $1`, [id]);
+      this.conversationCache.delete(bookHash);
+      return;
+    }
+
     const db = await this.openDB(bookHash);
     return new Promise((resolve, reject) => {
       const tx = db.transaction([CONVERSATIONS_STORE, MESSAGES_STORE], 'readwrite');
@@ -412,6 +488,16 @@ class AIStore {
 
   // UPDATED: Now requires bookHash
   async updateConversationTitle(bookHash: string, id: string, title: string): Promise<void> {
+    const sdb = await getSqliteDb();
+    if (sdb) {
+      await sdb.execute(
+        `UPDATE conversations SET title = $1, updatedAt = $2 WHERE id = $3`,
+        [title, Date.now(), id]
+      );
+      this.conversationCache.delete(bookHash);
+      return;
+    }
+
     const db = await this.openDB(bookHash);
     return new Promise((resolve, reject) => {
       const tx = db.transaction(CONVERSATIONS_STORE, 'readwrite');
@@ -438,6 +524,15 @@ class AIStore {
 
   // UPDATED: Now requires bookHash
   async saveMessage(bookHash: string, message: AIMessage): Promise<void> {
+    const sdb = await getSqliteDb();
+    if (sdb) {
+      await sdb.execute(
+        `INSERT OR REPLACE INTO messages (id, conversationId, role, content, createdAt) VALUES ($1, $2, $3, $4, $5)`,
+        [message.id, message.conversationId, message.role, message.content, message.createdAt]
+      );
+      return;
+    }
+
     const db = await this.openDB(bookHash);
     return new Promise((resolve, reject) => {
       const tx = db.transaction(MESSAGES_STORE, 'readwrite');
@@ -452,6 +547,15 @@ class AIStore {
 
   // UPDATED: Now requires bookHash
   async getMessages(bookHash: string, conversationId: string): Promise<AIMessage[]> {
+    const sdb = await getSqliteDb();
+    if (sdb) {
+      const rows = (await sdb.select(
+        `SELECT * FROM messages WHERE conversationId = $1 ORDER BY createdAt ASC`,
+        [conversationId]
+      )) as AIMessage[];
+      return rows;
+    }
+
     const db = await this.openDB(bookHash);
     return new Promise((resolve, reject) => {
       const req = db
