@@ -232,7 +232,17 @@ const AIAssistantChat = memo(
           }
 
           let conversationId = useAIChatStore.getState().activeConversationId;
-          if (!conversationId) {
+          if (conversationId) {
+            const exists = useAIChatStore.getState().conversations.some((c) => c.id === conversationId);
+            if (!exists) {
+              if (!stateObj.pendingConversationPromise) {
+                stateObj.pendingConversationPromise = useAIChatStore.getState().createConversation(bookHash, 'Chat', conversationId).finally(() => {
+                  stateObj.pendingConversationPromise = null;
+                });
+              }
+              await stateObj.pendingConversationPromise;
+            }
+          } else {
             if (!stateObj.pendingConversationPromise) {
               stateObj.pendingConversationPromise = useAIChatStore.getState().createConversation(bookHash, 'Chat').finally(() => {
                 stateObj.pendingConversationPromise = null;
@@ -394,7 +404,7 @@ const AIAssistant = ({ bookKey }: AIAssistantProps) => {
   const [indexed, setIndexed] = useState(false);
   const [viewMode, setViewMode] = useState<'chat' | 'history'>('chat');
   const [promptMode, setPromptMode] = useState<PromptMode>('standard');
-  const [chatSessionId, setChatSessionId] = useState<string>(() => Date.now().toString());
+
 
   const {
     loadConversations,
@@ -412,18 +422,7 @@ const AIAssistant = ({ bookKey }: AIAssistantProps) => {
     }
   }, [bookHash, loadConversations]);
 
-  // Restore session if exists
-  useEffect(() => {
-    if (!bookHash || isLoadingHistory) return;
 
-    // Check if we need to restore a session
-    if (!activeConversationId && conversations.length > 0) {
-      const mostRecent = conversations[0]!;
-      setActiveConversation(mostRecent.id).then(() => {
-        setChatSessionId(mostRecent.id);
-      });
-    }
-  }, [bookHash, isLoadingHistory, conversations, activeConversationId, setActiveConversation]);
 
   // Check if book is already indexed on mount
   useEffect(() => {
@@ -510,9 +509,7 @@ const AIAssistant = ({ bookKey }: AIAssistantProps) => {
 
   const handleNewChat = () => {
     cancelBackgroundStream();
-    createConversation(bookHash, 'New Chat').then((id) => {
-      setChatSessionId(id);
-    });
+    createConversation(bookHash, 'New Chat');
     setViewMode('chat');
   };
 
@@ -562,7 +559,6 @@ const AIAssistant = ({ bookKey }: AIAssistantProps) => {
             onSelect={async (id) => {
               cancelBackgroundStream();
               await setActiveConversation(id);
-              setChatSessionId(id);
               setViewMode('chat');
             }}
             onClose={() => setViewMode('chat')}
@@ -609,7 +605,7 @@ const AIAssistant = ({ bookKey }: AIAssistantProps) => {
             </div>
             <div className='relative flex-1 overflow-hidden'>
               <AIAssistantChat
-                key={chatSessionId}
+                key={`${bookHash}-${activeConversationId || 'new'}`}
                 aiSettings={aiSettings}
                 bookHash={bookHash}
                 bookTitle={bookTitle}

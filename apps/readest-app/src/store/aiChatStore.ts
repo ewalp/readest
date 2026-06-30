@@ -11,7 +11,7 @@ interface AIChatState {
 
   loadConversations: (bookHash: string) => Promise<void>;
   setActiveConversation: (id: string | null) => Promise<void>;
-  createConversation: (bookHash: string, title: string) => Promise<string>;
+  createConversation: (bookHash: string, title: string, existingId?: string) => Promise<string>;
   addMessage: (message: Omit<AIMessage, 'id' | 'createdAt'>) => Promise<void>;
   saveMessage: (message: AIMessage) => Promise<void>;
   updateLastAssistantMessage: (content: string) => Promise<void>;
@@ -32,15 +32,34 @@ export const useAIChatStore = create<AIChatState>((set, get) => ({
   currentBookHash: null,
 
   loadConversations: async (bookHash: string) => {
-    if (get().currentBookHash === bookHash && get().conversations.length > 0) {
+    const isNewBook = get().currentBookHash !== bookHash;
+    if (!isNewBook && get().conversations.length > 0) {
       return;
     }
-    set({ isLoadingHistory: true });
+    set({
+      isLoadingHistory: true,
+      currentBookHash: bookHash,
+      ...(isNewBook ? { activeConversationId: null, messages: [] } : {}),
+    });
     try {
       const conversations = await aiStore.getConversations(bookHash);
+      let activeId = get().activeConversationId;
+      let messages = get().messages;
+
+      if (!activeId || isNewBook) {
+        if (conversations.length > 0) {
+          activeId = conversations[0]!.id;
+          messages = await aiStore.getMessages(bookHash, activeId);
+        } else {
+          activeId = generateId();
+          messages = [];
+        }
+      }
+
       set({
         conversations,
-        currentBookHash: bookHash,
+        activeConversationId: activeId,
+        messages,
         isLoadingHistory: false,
       });
     } catch {
@@ -75,8 +94,8 @@ export const useAIChatStore = create<AIChatState>((set, get) => ({
     }
   },
 
-  createConversation: async (bookHash: string, title: string) => {
-    const id = generateId();
+  createConversation: async (bookHash: string, title: string, existingId?: string) => {
+    const id = existingId || generateId();
     const now = Date.now();
     const conversation: AIConversation = {
       id,
@@ -90,7 +109,7 @@ export const useAIChatStore = create<AIChatState>((set, get) => ({
     set({
       conversations,
       activeConversationId: id,
-      messages: [],
+      messages: id === get().activeConversationId ? get().messages : [],
       currentBookHash: bookHash,
     });
     return id;
