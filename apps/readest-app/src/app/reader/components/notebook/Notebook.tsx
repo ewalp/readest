@@ -259,10 +259,12 @@ const Notebook: React.FC = ({}) => {
         }}
       >
         <style jsx>{`
-          @media (max-width: 640px) {
+          @media (max-width: 1024px) {
             .notebook-container {
-              width: 100%;
-              min-width: 100%;
+              ${isNotebookPinned ? '' : 'width: 100% !important; min-width: 100% !important; max-width: 100% !important;'}
+            }
+            :global(.drag-bar) {
+              ${isNotebookPinned ? '' : 'display: none !important;'}
             }
           }
         `}</style>
