@@ -411,7 +411,6 @@ const AIAssistant = ({ bookKey }: AIAssistantProps) => {
     conversations,
     setActiveConversation,
     activeConversationId,
-    isLoadingHistory,
     createConversation,
   } = useAIChatStore();
 
