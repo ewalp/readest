@@ -2,16 +2,50 @@ import { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { useEnv } from '@/context/EnvContext';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useReaderStore } from '@/store/readerStore';
+import { useBookProgress } from '@/store/readerProgressStore';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { useTranslation } from '@/hooks/useTranslation';
 import { KOSyncClient, KoSyncProgress } from '@/services/sync/KOSyncClient';
 import { Book, BookProgress, FIXED_LAYOUT_FORMATS } from '@/types/book';
+import type { KOSyncSettings, SystemSettings } from '@/types/settings';
 import { BookDoc } from '@/libs/document';
 import { debounce } from '@/utils/debounce';
 import { eventDispatcher } from '@/utils/event';
-import { getCFIFromXPointer, normalizeProgressXPointer, XCFI } from '@/utils/xcfi';
+import { getCFIFromXPointer, getXPointerFromCFI } from '@/utils/xcfi';
+import { isMalformedLocationCfi } from '@/utils/cfi';
+import {
+  formatProgressPercentage,
+  getLocalProgressPreview,
+  getProgressPercentage,
+} from './kosyncPreview';
+import {
+  decideRemoteConflict,
+  getRemoteFraction,
+  isReportedByKOReader,
+  isXPointerProgress,
+  resolveRemoteLocalFraction,
+  type RemoteFractionResolution,
+} from './kosyncProgress';
+import { useWindowActiveChanged } from './useWindowActiveChanged';
 
 type SyncState = 'idle' | 'checking' | 'conflict' | 'synced' | 'error';
+
+/**
+ * Source of the KOSync-protocol config this hook instance syncs against.
+ * selectConfig returns null when the provider is not configured; the hook
+ * then idles. The kosync provider preserves the original semantics: a client
+ * exists once credentials are set, `enabled` is checked at pull/push time.
+ */
+export interface KosyncProgressProvider {
+  name: 'kosync' | 'bookorbit';
+  selectConfig: (settings: SystemSettings) => KOSyncSettings | null;
+}
+
+export const kosyncProvider: KosyncProgressProvider = {
+  name: 'kosync',
+  selectConfig: (settings) =>
+    settings.kosync.username && settings.kosync.userkey ? settings.kosync : null,
+};
 
 export interface SyncDetails {
   book: Book;
@@ -26,56 +60,88 @@ export interface SyncDetails {
   };
 }
 
-export const useKOSync = (bookKey: string) => {
+export const useKOSync = (bookKey: string, provider: KosyncProgressProvider = kosyncProvider) => {
   const _ = useTranslation();
   const { appService } = useEnv();
   const { settings } = useSettingsStore();
-  const { getProgress, getView } = useReaderStore();
-  const { getBookData } = useBookDataStore();
+  // Per-field selectors — methods are stable refs, so no subscription churn.
+  const getProgress = useReaderStore((s) => s.getProgress);
+  const getView = useReaderStore((s) => s.getView);
+  const getBookData = useBookDataStore((s) => s.getBookData);
+  const getConfig = useBookDataStore((s) => s.getConfig);
+  const setConfig = useBookDataStore((s) => s.setConfig);
 
   const [kosyncClient, setKOSyncClient] = useState<KOSyncClient | null>(null);
   const [syncState, setSyncState] = useState<SyncState>('idle');
   const [conflictDetails, setConflictDetails] = useState<SyncDetails | null>(null);
   const [errorMessage] = useState<string | null>(null);
   const hasPulledOnce = useRef(false);
+  // The remote report the user last settled via the conflict dialog. A re-pull
+  // (window re-activation, e.g. returning from a system dictionary popup) that
+  // returns this exact unchanged report must not re-open the dialog — only a
+  // report that changed since is a new conflict (#5527).
+  const resolvedRemoteRef = useRef<KoSyncProgress | null>(null);
 
-  const progress = getProgress(bookKey);
+  // Reactive subscription: drives the auto-push effect and the initial
+  // pull-on-open effect below. Reads from readerProgressStore.
+  const progress = useBookProgress(bookKey);
 
   useEffect(() => {
-    if (!settings.kosync.username || !settings.kosync.userkey) {
+    const config = provider.selectConfig(settings);
+    if (!config) {
       setKOSyncClient(null);
       return;
     }
-    const client = new KOSyncClient(settings.kosync);
+    const client = new KOSyncClient({ ...config });
     setKOSyncClient(client);
-  }, [settings]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [settings, provider]);
 
-  const generateKOProgress = useCallback(() => {
+  const generateKOProgress = useCallback(async () => {
     const progress = getProgress(bookKey);
-    const book = getBookData(bookKey)?.book;
-    if (!progress || !book) return null;
+    const bookData = getBookData(bookKey);
+    if (!progress || !bookData) return null;
 
     let koProgress = '';
     let percentage: number;
-    if (FIXED_LAYOUT_FORMATS.has(book.format)) {
+    if (bookData.isFixedLayout) {
       const page = progress.section?.current ?? 0;
       const totalPages = progress.section?.total ?? 0;
       koProgress = page.toString();
       percentage = totalPages > 0 ? (page + 1) / totalPages : 0;
     } else {
       const view = getView(bookKey);
+      const config = getConfig(bookKey);
       const cfi = progress.location;
       if (!view || !cfi) return null;
-      try {
-        const content = view.renderer.getContents()[0];
-        if (content) {
-          const { doc, index: spineIndex } = content;
-          const converter = new XCFI(doc, spineIndex || 0);
-          const xpointerResult = converter.cfiToXPointer(cfi);
-          koProgress = normalizeProgressXPointer(xpointerResult.xpointer);
+      if (isMalformedLocationCfi(cfi)) {
+        // A malformed empty-start/end CFI (cfi-inert skip-link bug) resolves to
+        // the wrong end of the section. Don't derive an XPointer from it — once
+        // pushed as an XPointer the "malformed" signal is lost and other devices
+        // can't discard it. Reuse the last known-good XPointer instead.
+        if (config?.xpointer) koProgress = config.xpointer;
+      } else {
+        try {
+          const koContents = view.renderer.getContents();
+          const koPrimaryIdx = view.renderer.primaryIndex;
+          const content = koContents.find((x) => x.index === koPrimaryIdx) ?? koContents[0];
+          // progress.location may be a CFI in a different spine section than the
+          // currently-rendered primary view (#primaryIndex can lag behind the
+          // viewport while scrolling). Resolve against the CFI's own section
+          // rather than forcing the primary view's document, which throws on a
+          // spine-index mismatch.
+          const xpointerResult = await getXPointerFromCFI(
+            cfi,
+            content?.doc,
+            content?.index,
+            bookData.bookDoc ?? undefined,
+          );
+          koProgress = xpointerResult.xpointer;
+          setConfig(bookKey, { xpointer: koProgress });
+        } catch (error) {
+          console.error('Failed to convert CFI to XPointer', error);
+          if (config?.xpointer) koProgress = config.xpointer;
         }
-      } catch (error) {
-        console.error('Failed to convert CFI to XPointer', error);
       }
 
       const page = progress.pageinfo?.current ?? 0;
@@ -84,27 +150,59 @@ export const useKOSync = (bookKey: string) => {
     }
 
     return { koProgress, percentage };
-  }, [bookKey, getProgress, getBookData, getView]);
+  }, [bookKey, getProgress, getBookData, getView, getConfig, setConfig]);
 
   const applyRemoteProgress = async (book: Book, bookDoc: BookDoc, remote: KoSyncProgress) => {
     const view = getView(bookKey);
+    const bookData = getBookData(bookKey);
+    if (!view || !bookData) return;
+
     if (FIXED_LAYOUT_FORMATS.has(book.format)) {
       const pageToGo = parseInt(remote.progress!, 10);
       if (isNaN(pageToGo)) return;
-      view?.select(pageToGo - 1);
+      view.select(pageToGo - 1);
     } else {
-      if (!remote.progress?.startsWith('/body')) return;
-      try {
-        const content = view?.renderer.getContents()[0];
-        const koProgress = normalizeProgressXPointer(remote.progress);
-        const cfi = await getCFIFromXPointer(koProgress, content?.doc, content?.index, bookDoc);
-        view?.goTo(cfi);
-      } catch (error) {
-        console.error('Failed to convert XPointer to CFI', error);
-        return;
+      let navigated = false;
+      // KOReader stores positions as CREngine XPointers; convert and jump
+      // precisely when we have one.
+      if (isXPointerProgress(remote.progress)) {
+        try {
+          const content = view.renderer
+            .getContents()
+            .find((x) => x.index === view.renderer.primaryIndex);
+          // Only feed percentage into the CREngine↔foliate drift anchor when
+          // the report actually comes from KOReader (#5109) — a look-alike
+          // server's percentage isn't comparable to foliate's section table
+          // and re-anchors to the wrong chapter otherwise.
+          const driftAnchorPercentage = isReportedByKOReader(remote)
+            ? remote.percentage
+            : undefined;
+          const cfi = await getCFIFromXPointer(
+            remote.progress!,
+            content?.doc,
+            content?.index,
+            bookDoc,
+            driftAnchorPercentage,
+          );
+          view.goTo(cfi);
+          navigated = true;
+        } catch (error) {
+          console.error('Failed to convert XPointer to CFI', error);
+        }
+      }
+      // Other KOSync-compatible servers (e.g. Kavita) report progress in
+      // formats Readest can't resolve positionally — approximate with the
+      // reported percentage so "use remote" still moves the reader.
+      if (!navigated) {
+        const remoteFraction = getRemoteFraction(remote);
+        if (remoteFraction === undefined) return;
+        view.goToFraction(remoteFraction);
       }
     }
-    eventDispatcher.dispatch('toast', { message: _('Reading Progress Synced'), type: 'info' });
+    eventDispatcher.dispatch('hint', {
+      bookKey,
+      message: _('Reading Progress Synced'),
+    });
   };
 
   const promptedSync = async (
@@ -113,24 +211,25 @@ export const useKOSync = (bookKey: string) => {
     local: BookProgress,
     remote: KoSyncProgress,
   ) => {
-    let localPreview = '';
     let remotePreview = '';
     const remotePercentage = remote.percentage || 0;
+    // Progress last pushed from this same device is just our own earlier
+    // position; only treat a sizeable jump (≥1%) as a conflict so we don't
+    // prompt on the sub-page drift between a push and the next pull.
+    const isSameDevice =
+      !!remote.device_id && remote.device_id === provider.selectConfig(settings)?.deviceId;
+    const conflictProgressDiffThreshold = isSameDevice ? 0.01 : 0.0001;
+    // The remote progress as a percentage to compare against the local one;
+    // refined to a locally-resolved fraction for reflowable books below.
+    let remoteComparePercentage = remotePercentage;
+    let showConflictDetails = false;
+    const isFixedLayout = FIXED_LAYOUT_FORMATS.has(book.format);
 
-    if (FIXED_LAYOUT_FORMATS.has(book.format)) {
+    const localPreview = getLocalProgressPreview(local, isFixedLayout, _);
+    const localPercentage = getProgressPercentage(isFixedLayout ? local.section : local.pageinfo);
+
+    if (isFixedLayout) {
       const localPageInfo = local.section;
-      const localPercentage =
-        localPageInfo && localPageInfo.total > 0
-          ? Math.round(((localPageInfo.current + 1) / localPageInfo.total) * 100)
-          : 0;
-      localPreview = localPageInfo
-        ? _('Page {{page}} of {{total}} ({{percentage}}%)', {
-            page: localPageInfo.current + 1,
-            total: localPageInfo.total,
-            percentage: localPercentage,
-          })
-        : _('Current position');
-
       const remotePage = parseInt(remote.progress!, 10);
       if (!isNaN(remotePage) && remotePercentage > 0) {
         const localTotalPages = localPageInfo?.total ?? 0;
@@ -141,39 +240,72 @@ export const useKOSync = (bookKey: string) => {
           remotePreview = _('Page {{page}} of {{total}} ({{percentage}}%)', {
             page: remotePage,
             total: remoteTotalPages,
-            percentage: Math.round(remotePercentage * 100),
+            percentage: formatProgressPercentage(remotePercentage),
           });
         } else {
           remotePreview = _('Approximately page {{page}} of {{total}} ({{percentage}}%)', {
             page: remotePage,
             total: remoteTotalPages,
-            percentage: Math.round(remotePercentage * 100),
+            percentage: formatProgressPercentage(remotePercentage),
           });
         }
+        showConflictDetails =
+          Math.abs(localPercentage - remotePercentage) > conflictProgressDiffThreshold;
       } else {
         remotePreview = _('Approximately {{percentage}}%', {
-          percentage: Math.round(remotePercentage * 100),
+          percentage: formatProgressPercentage(remotePercentage),
         });
       }
-    } else {
-      const localPageInfo = local.pageinfo;
-      const localPercentage =
-        localPageInfo && localPageInfo.total > 0
-          ? Math.round(((localPageInfo.current + 1) / localPageInfo.total) * 100)
-          : 0;
-      localPreview = `${local.sectionLabel} (${localPercentage}%)`;
-
+    } else if (isSameDevice) {
+      // A report this device pushed carries a percentage computed with the
+      // same formula as localPercentage, so the two compare directly. Don't
+      // round-trip our own XPointer through the CREngine drift correction:
+      // it can mis-anchor or fail to resolve, and an 'unresolved' failure
+      // would force a phantom conflict on every window re-activation (#5527).
+      // The #5065 protection exists for OTHER devices' positions; overwriting
+      // this device's own stale echo is fine.
+      showConflictDetails =
+        Math.abs(localPercentage - remotePercentage) > conflictProgressDiffThreshold;
       remotePreview = _('Approximately {{percentage}}%', {
-        percentage: Math.round(remotePercentage * 100),
+        percentage: formatProgressPercentage(remotePercentage),
+      });
+    } else {
+      // KOReader's reported percentage comes from its own pagination, so it's
+      // not directly comparable to Readest's progress. Resolve the remote
+      // position to a local fraction for an apples-to-apples comparison.
+      //
+      // Crucially, a KOReader XPointer that FAILS to resolve locally
+      // ('unresolved') is not the same as "no conflict": its percentage isn't
+      // comparable, so we must not conclude the positions match just because
+      // the numbers happen to line up (the #5065 iOS bug). Only genuinely
+      // non-resolvable formats ('not-xpointer', e.g. Kavita) fall back to the
+      // reported percentage. See decideRemoteConflict for details.
+      const view = getView(bookKey);
+      const resolution: RemoteFractionResolution = view
+        ? await resolveRemoteLocalFraction(remote, view, bookDoc)
+        : { status: isXPointerProgress(remote.progress) ? 'unresolved' : 'not-xpointer' };
+      const decision = decideRemoteConflict(
+        resolution,
+        localPercentage,
+        remotePercentage,
+        conflictProgressDiffThreshold,
+      );
+      remoteComparePercentage = decision.comparePercentage;
+      showConflictDetails = decision.showConflictDetails;
+      remotePreview = _('Approximately {{percentage}}%', {
+        percentage: formatProgressPercentage(remoteComparePercentage),
       });
     }
 
-    setConflictDetails({
-      book,
-      bookDoc,
-      local: { cfi: local.location, preview: localPreview },
-      remote: { ...remote, preview: remotePreview },
-    });
+    if (showConflictDetails) {
+      setConflictDetails({
+        book,
+        bookDoc,
+        local: { cfi: local.location, preview: localPreview },
+        remote: { ...remote, preview: remotePreview },
+      });
+    }
+    return showConflictDetails;
   };
 
   const pushProgress = useMemo(
@@ -181,12 +313,14 @@ export const useKOSync = (bookKey: string) => {
       debounce(async () => {
         if (!bookKey || !appService || !kosyncClient || !hasPulledOnce.current) return;
         const { settings } = useSettingsStore.getState();
-        if (['receive', 'disable'].includes(settings.kosync.strategy)) return;
+        const config = provider.selectConfig(settings);
+        if (!config || ['receive', 'disable'].includes(config.strategy)) return;
 
         const currentBook = getBookData(bookKey)?.book;
-        const progress = generateKOProgress();
+        const progress = await generateKOProgress();
         if (!currentBook || !progress || !progress.koProgress) return;
 
+        console.log('[KOSync] Pushing progress');
         await kosyncClient.updateProgress(currentBook, progress.koProgress, progress.percentage);
       }, 5000),
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -202,8 +336,9 @@ export const useKOSync = (bookKey: string) => {
       const bookDoc = bookData?.bookDoc;
       if (!book || !bookDoc) return;
 
-      const { strategy, enabled } = settings.kosync;
-      if (!enabled) return;
+      const config = provider.selectConfig(settings);
+      if (!config?.enabled) return;
+      const { strategy } = config;
 
       hasPulledOnce.current = true;
       if (strategy === 'send') {
@@ -217,6 +352,7 @@ export const useKOSync = (bookKey: string) => {
         setSyncState('synced');
         return;
       }
+      console.log('[KOSync] Pulled remote progress', { bookKey, remoteProgress });
 
       const localTimestamp = bookData?.config?.updatedAt || book.updatedAt;
       const remoteTimestamp = remoteProgress.timestamp
@@ -227,65 +363,104 @@ export const useKOSync = (bookKey: string) => {
         applyRemoteProgress(book, bookDoc, remoteProgress);
         setSyncState('synced');
       } else if (strategy === 'prompt') {
-        promptedSync(book, bookDoc, progress, remoteProgress);
-        setSyncState('conflict');
+        const resolved = resolvedRemoteRef.current;
+        const isAlreadyResolved =
+          !!resolved &&
+          resolved.progress === remoteProgress.progress &&
+          resolved.timestamp === remoteProgress.timestamp &&
+          resolved.device_id === remoteProgress.device_id;
+        if (isAlreadyResolved) {
+          setSyncState('synced');
+          return;
+        }
+        // Only stay in the conflict state when there's an actual conflict to
+        // resolve; otherwise return to 'synced' so auto-push keeps working.
+        const hasConflict = await promptedSync(book, bookDoc, progress, remoteProgress);
+        setSyncState(hasConflict ? 'conflict' : 'synced');
       } else {
         setSyncState('synced');
       }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [bookKey, appService, kosyncClient, settings.kosync, progress],
+    [bookKey, appService, kosyncClient, settings, progress],
   );
+
+  // use a ref to track the current push/pull functions so they can change without triggering effects
+  const syncRefs = useRef({ pushProgress, pullProgress });
+  useEffect(() => {
+    syncRefs.current = { pushProgress, pullProgress };
+  }, [pushProgress, pullProgress]);
 
   useEffect(() => {
     const handlePushProgress = (event: CustomEvent) => {
+      const { pushProgress } = syncRefs.current;
       if (event.detail.bookKey !== bookKey) return;
       pushProgress();
       pushProgress.flush();
     };
     const handleFlush = (event: CustomEvent) => {
+      const { pushProgress } = syncRefs.current;
       if (event.detail.bookKey !== bookKey) return;
       pushProgress.flush();
     };
     eventDispatcher.on('push-kosync', handlePushProgress);
     eventDispatcher.on('flush-kosync', handleFlush);
     return () => {
+      const { pushProgress } = syncRefs.current;
       eventDispatcher.off('push-kosync', handlePushProgress);
       eventDispatcher.off('flush-kosync', handleFlush);
       pushProgress.flush();
     };
-  }, [bookKey, pushProgress]);
+  }, [bookKey]);
 
   useEffect(() => {
     const handlePullProgress = (event: CustomEvent) => {
       if (event.detail.bookKey !== bookKey) return;
+      const { pullProgress } = syncRefs.current;
       pullProgress();
     };
     eventDispatcher.on('pull-kosync', handlePullProgress);
     return () => {
       eventDispatcher.off('pull-kosync', handlePullProgress);
     };
-  }, [bookKey, pullProgress]);
+  }, [bookKey]);
 
   // Pull: pull progress once when the book is opened
   useEffect(() => {
     if (!appService || !kosyncClient || !progress?.location) return;
     if (hasPulledOnce.current) return;
 
-    pullProgress();
-  }, [appService, kosyncClient, progress?.location, pushProgress, pullProgress]);
+    syncRefs.current.pullProgress();
+  }, [appService, kosyncClient, progress?.location]);
 
   // Push: auto-push progress when progress changes with a debounce
   useEffect(() => {
     if (syncState === 'synced' && progress) {
-      const { strategy, enabled } = settings.kosync;
-      if (strategy !== 'receive' && enabled) {
-        pushProgress();
+      // Skip auto-pushes while previewing a deep-link target. Manual pushes
+      // via the 'push-kosync' event are still respected (explicit user intent).
+      if (useReaderStore.getState().getViewState(bookKey)?.previewMode) return;
+      const config = provider.selectConfig(settings);
+      if (config?.enabled && config.strategy !== 'receive') {
+        syncRefs.current.pushProgress();
       }
     }
-  }, [progress, syncState, settings.kosync, pushProgress]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [progress, syncState, settings, bookKey]);
+
+  useWindowActiveChanged((isActive) => {
+    const { pushProgress, pullProgress } = syncRefs.current;
+
+    if (isActive) {
+      hasPulledOnce.current = false;
+      pullProgress();
+    } else {
+      pushProgress();
+      pushProgress.flush();
+    }
+  });
 
   const resolveWithLocal = () => {
+    resolvedRemoteRef.current = conflictDetails?.remote ?? null;
     pushProgress();
     pushProgress.flush();
     setSyncState('synced');
@@ -298,8 +473,10 @@ export const useKOSync = (bookKey: string) => {
     const book = conflictDetails?.book;
     const bookDoc = conflictDetails?.bookDoc;
 
-    if (!book || !bookDoc || !remote || !remote.progress || !view) return;
+    if (!book || !bookDoc || !remote || !view) return;
+    if (!remote.progress && getRemoteFraction(remote) === undefined) return;
 
+    resolvedRemoteRef.current = remote;
     applyRemoteProgress(book, bookDoc, remote);
     setSyncState('synced');
     setConflictDetails(null);

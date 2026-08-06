@@ -29,6 +29,7 @@
   <a href="#planned-features">Planned Features</a> •
   <a href="#screenshots">Screenshots</a> •
   <a href="#downloads">Downloads</a> •
+  <a href="#documentation">Documentation</a> •
   <a href="#getting-started">Getting Started</a> •
   <a href="#troubleshooting">Troubleshooting</a> •
   <a href="#support">Support</a> •
@@ -45,38 +46,38 @@
 
 <div align="left">✅ Implemented</div>
 
-| **Feature**                             | **Description**                                                                                                | **Status** |
-| --------------------------------------- | -------------------------------------------------------------------------------------------------------------- | ---------- |
-| **Multi-Format Support**                | Support EPUB, MOBI, KF8 (AZW3), FB2, CBZ, TXT, PDF (experimental)                                              | ✅         |
-| **Scroll/Page View Modes**              | Switch between scrolling or paginated reading modes.                                                           | ✅         |
-| **Full-Text Search**                    | Search across the entire book to find relevant sections.                                                       | ✅         |
-| **Annotations and Highlighting**        | Add highlights, bookmarks, and notes to enhance your reading experience.                                       | ✅         |
-| **Excerpt Text for Note-Taking**        | Easily excerpt text from books for detailed notes and analysis.                                                | ✅         |
-| **Dictionary/Wikipedia Lookup**         | Instantly look up words and terms when reading.                                                                | ✅         |
-| **[Parallel Read][link-parallel-read]** | Read two books or documents simultaneously in a split-screen view.                                             | ✅         |
-| **Customize Font and Layout**           | Adjust font, layout, theme mode, and theme colors for a personalized experience.                               | ✅         |
-| **File Association and Open With**      | Quickly open files in Readest in your file browser with one-click.                                             | ✅         |
-| **Sync across Platforms**               | Synchronize book files, reading progress, notes, and bookmarks across all supported platforms.                 | ✅         |
-| **Accessibility**                       | Provides full keyboard navigation and supports for screen readers such as VoiceOver, TalkBack, NVDA, and Orca. | ✅         |
-| **Translate with DeepL and Yandex**     | From a single sentence to the entire book—translate instantly.                                                 | ✅         |
-| **Text-to-Speech (TTS) Support**        | Enjoy smooth, multilingual narration—even within a single book.                                                | ✅         |
-| **Library Management**                  | Organize, sort, and manage your entire ebook library.                                                          | ✅         |
-| **OPDS/Calibre Integration**            | Integrate OPDS/Calibre to access online libraries and catalogs.                                                | ✅         |
-| **Code Syntax Highlighting**            | Read software manuals with rich coloring of code examples.                                                     | ✅         |
+| **Feature**                                | **Description**                                                                                                        | **Status** |
+| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------- | ---------- |
+| **Multi-Format Support**                   | Support EPUB, PDF, MOBI, KF8 (AZW3), FB2, CBZ, TXT, MD (Markdown)                                                                      | ✅         |
+| **Scroll/Page View Modes**                 | Switch between scrolling or paginated reading modes.                                                                   | ✅         |
+| **Full-Text Search**                       | Search inside a book or across the current library shelf to find relevant sections.                                    | ✅         |
+| **Annotations and Highlighting**           | Add highlights, bookmarks, and notes to enhance your reading experience and use instant mode for quicker interactions. | ✅         |
+| **Dictionary/Wikipedia Lookup**            | Instantly look up words and terms when reading.                                                                        | ✅         |
+| **[Parallel Read][link-parallel-read]**    | Read two books or documents simultaneously in a split-screen view.                                                     | ✅         |
+| **Customize Font and Layout**              | Adjust font, layout, theme mode, and theme colors for a personalized experience.                                       | ✅         |
+| **Code Syntax Highlighting**               | Read software manuals with rich coloring of code examples.                                                             | ✅         |
+| **File Association and Open With**         | Quickly open files in Readest in your file browser with one-click.                                                     | ✅         |
+| **Library Management**                     | Organize, sort, and manage your entire ebook library.                                                                  | ✅         |
+| **OPDS/Calibre Integration**               | Integrate OPDS/Calibre to access online libraries and catalogs.                                                        | ✅         |
+| **Translate with DeepL and Yandex**        | From a single sentence to the entire book—translate instantly.                                                         | ✅         |
+| **Text-to-Speech (TTS) Support**           | Enjoy smooth, multilingual narration—even within a single book.                                                        | ✅         |
+| [**Read-Along Narration**][link-readalong] | Play a book's own recorded narration with the text highlighted in step — Kindle Immersion Reading / Audible Read & Listen, on the open EPUB standard. Reads EPUB 3 Media Overlays; pair an ebook with its audiobook using [Storyteller][link-storyteller]. | ✅         |
+| **Sync across Platforms**                  | Synchronize book files, reading progress, notes, and bookmarks across all supported platforms.                         | ✅         |
+| [**Sync with Koreader**][link-kosync-wiki] | Synchronize reading progress, notes, and bookmarks with [Koreader][link-koreader] devices.                             | ✅         |
+| **Accessibility**                          | Provides full keyboard navigation and support for screen readers such as VoiceOver, TalkBack, NVDA, and Orca.         | ✅         |
+| **Visual & Focus Aids**                    | Reading ruler, paragraph-by-paragraph reading mode, and speed reading features.                                        | ✅         |
 
 ## Planned Features
 
 <div align="left">🛠 Building</div>
 <div align="left">🔄 Planned</div>
 
-| **Feature**                                | **Description**                                                                            | **Priority** |
-| ------------------------------------------ | ------------------------------------------------------------------------------------------ | ------------ |
-| [**Sync with Koreader**][link-kosync-wiki] | Synchronize reading progress, notes, and bookmarks with [Koreader][link-koreader] devices. | 🛠           |
-| **AI-Powered Summarization**               | Generate summaries of books or chapters using AI for quick insights.                       | 🛠           |
-| **Audiobook Support**                      | Extend functionality to play and manage audiobooks.                                        | 🔄           |
-| **Handwriting Annotations**                | Add support for handwriting annotations using a pen on compatible devices.                 | 🔄           |
-| **Advanced Reading Stats**                 | Track reading time, pages read, and more for detailed insights.                            | 🔄           |
-| **In-Library Full-Text Search**            | Search across your entire ebook library to find topics and quotes.                         | 🔄           |
+| **Feature**                     | **Description**                                                            | **Priority** |
+| ------------------------------- | -------------------------------------------------------------------------- | ------------ |
+| **AI-Powered Summarization**    | Generate summaries of books or chapters using AI for quick insights.       | 🛠           |
+| **Advanced Reading Stats**      | Track reading time, pages read, and more for detailed insights.            | 🛠           |
+| **Audiobook Support**           | Extend functionality to play and manage audiobooks.                        | 🔄           |
+| **Handwriting Annotations**     | Add support for handwriting annotations using a pen on compatible devices. | 🔄           |
 
 Stay tuned for continuous improvements and updates! Contributions and suggestions are always welcome—let's build the ultimate reading experience together. 😊
 
@@ -114,108 +115,15 @@ Stay tuned for continuous improvements and updates! Contributions and suggestion
 - Linux users can also install [Readest on Flathub][link-flathub].
 - Web: Visit and use **Readest for Web** at [https://web.readest.com][link-web-readest].
 
-## Requirements
+## Documentation
 
-- **Node.js** and **pnpm** for Next.js development
-- **Rust** and **Cargo** for Tauri development
+Guides, tutorials, and FAQs for installing and using Readest live in the official documentation:
 
-For the best experience to build Readest for yourself, use a recent version of Node.js and Rust. Refer to the [Tauri documentation](https://v2.tauri.app/start/prerequisites/) for details on setting up the development environment prerequisites on different platforms.
+📖 **[https://readest.com/docs][link-docs]**
 
-```bash
-nvm install v22
-nvm use v22
-npm install -g pnpm
-rustup update
-```
+## Building from Source
 
-## Getting Started
-
-To get started with Readest, follow these steps to clone and build the project.
-
-### 1. Clone the Repository
-
-```bash
-git clone https://github.com/readest/readest.git
-cd readest
-```
-
-### 2. Install Dependencies
-
-```bash
-# might need to rerun this when code is updated
-git submodule update --init --recursive
-pnpm install
-# copy vendors dist libs to public directory
-pnpm --filter @readest/readest-app setup-vendors
-```
-
-### 3. Verify Dependencies Installation
-
-To confirm that all dependencies are correctly installed, run the following command:
-
-```bash
-pnpm tauri info
-```
-
-This command will display information about the installed Tauri dependencies and configuration on your platform. Note that the output may vary depending on the operating system and environment setup. Please review the output specific to your platform for any potential issues.
-
-For Windows targets, “Build Tools for Visual Studio 2022” (or a higher edition of Visual Studio) and the “Desktop development with C++” workflow must be installed. For Windows ARM64 targets, the “VS 2022 C++ ARM64 build tools” and "C++ Clang Compiler for Windows" components must be installed. And make sure `clang` can be found in the path by adding `C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Tools\Llvm\x64\bin` for example in the environment variable `Path`.
-
-### 4. Build for Development
-
-```bash
-# Start development for the Tauri app
-pnpm tauri dev
-# or start development for the Web app
-pnpm dev-web
-# preview with OpenNext build for the Web app
-pnpm preview
-```
-
-For Android:
-
-```bash
-# Initialize the Android environment (run once)
-pnpm tauri android init
-
-pnpm tauri android dev
-# or if you want to dev on a real device
-pnpm tauri android dev --host
-```
-
-For iOS:
-
-```bash
-# Set up the iOS environment (run once)
-pnpm tauri ios init
-
-pnpm tauri ios dev
-# or if you want to dev on a real device
-pnpm tauri ios dev --host
-```
-
-### 5. Build for Production
-
-```bash
-pnpm tauri build
-pnpm tauri android build
-pnpm tauri ios build
-```
-
-### 6. Setup dev environment with Nix
-
-If you have Nix installed, you can leverage flake to enter a development shell
-with all the necessary dependencies:
-
-```bash
-nix develop ./ops  # enter a dev shell for the web app
-nix develop ./ops#ios # enter a dev shell for the ios app
-nix develop ./ops#android # enter a dev shell for the android app
-```
-
-### 7. More information
-
-Please check the [wiki][link-gh-wiki] of this project for more information on development.
+To build Readest from the latest commit, see [Getting Started](./CONTRIBUTING.md#getting-started).
 
 ## Troubleshooting
 
@@ -250,6 +158,32 @@ Please check the [wiki][link-gh-wiki] of this project for more information on de
 
 - See Issue [readest/readest#358](https://github.com/readest/readest/issues/358) for further details, or head over to our [Discord][link-discord] server and open a support discussion with detailed logs of your environment and the steps you’ve taken.
 
+### 2. AppImage Launches but Only Shows a Taskbar Icon
+
+On some Arch Linux systems—especially those using Wayland—the Readest AppImage may briefly show an icon in the taskbar and then exit without opening a window.
+
+You might see logs such as:
+
+```
+Could not create default EGL display: EGL_BAD_PARAMETER. Aborting...
+```
+
+This behavior is usually caused by compatibility issues between the bundled AppImage libraries and the system’s EGL / Wayland environment.
+
+**Workaround 1: Launch with LD_PRELOAD (recommended)**
+
+You can preload the system Wayland client library before launching the AppImage:
+
+```
+LD_PRELOAD=/usr/lib/libwayland-client.so /path/to/Readest.AppImage
+```
+
+This workaround has been confirmed to resolve the issue on affected systems.
+
+**Workaround 2: Use the Flatpak Version**
+
+If you prefer a more reliable out-of-the-box experience on Arch Linux, consider using the [Flatpak build on Flathub][link-flathub] instead. The Flatpak runtime helps avoid system library mismatches and tends to behave more consistently across different Wayland and X11 setups.
+
 ## Contributors
 
 Readest is open-source, and contributions are welcome! Feel free to open issues, suggest features, or submit pull requests. Please **review our [contributing guidelines](CONTRIBUTING.md) before you start**. We also welcome you to join our [Discord][link-discord] community for either support or contributing guidance.
@@ -262,15 +196,7 @@ Readest is open-source, and contributions are welcome! Feel free to open issues,
 
 ## Support
 
-If Readest has been useful to you, consider supporting its development. You can [become a sponsor on GitHub](https://github.com/sponsors/readest), [donate via Stripe](https://donate.stripe.com/4gMcN5aZdcE52kW3TFgjC01), or [contribute with crypto](https://donate.readest.com). Your contribution helps us squash bugs faster, improve performance, and keep building great features.
-
-### Sponsors
-
-<p align="center">
-  <a title="Browser testing via TestMu AI" href="https://www.testmu.ai?utm_source=readest&utm_medium=sponsor" target="_blank">
-    <img src="https://raw.githubusercontent.com/readest/readest/refs/heads/main/data/sponsors/testmu-ai-logo.png" style="vertical-align: middle;" width="250" />
-  </a>
-</p>
+If Readest has been useful to you, consider supporting its development at [donate.readest.com](https://donate.readest.com), where you'll find all available donation methods, including GitHub Sponsors, card payments, and crypto. Your contribution helps us fix bugs faster, improve performance, and keep building great features.
 
 ## License
 
@@ -291,7 +217,9 @@ The following libraries and frameworks are used in this software:
 
 The following fonts are utilized in this software, either bundled within the application or provided through web fonts:
 
-[Bitter](https://fonts.google.com/?query=Bitter), [Fira Code](https://fonts.google.com/?query=Fira+Code), [Literata](https://fonts.google.com/?query=Literata), [Merriweather](https://fonts.google.com/?query=Merriweather), [Noto Sans](https://fonts.google.com/?query=Noto+Sans), [Roboto](https://fonts.google.com/?query=Roboto), [LXGW WenKai](https://github.com/lxgw/LxgwWenKai), [MiSans](https://hyperos.mi.com/font/en/), [Source Han](https://github.com/adobe-fonts/source-han-sans/), [WenQuanYi Micro Hei](http://wenq.org/wqy2/)
+[Bitter](https://fonts.google.com/specimen/Bitter), [Fira Code](https://fonts.google.com/specimen/Fira+Code), [Inter](https://fonts.google.com/specimen/Inter), [Literata](https://fonts.google.com/specimen/Literata), [Merriweather](https://fonts.google.com/specimen/Merriweather), [Noto Sans](https://fonts.google.com/specimen/Noto+Sans), [Roboto](https://fonts.google.com/specimen/Roboto), [LXGW WenKai](https://github.com/lxgw/LxgwWenKai), [MiSans](https://hyperos.mi.com/font/en/), [Source Han](https://github.com/adobe-fonts/source-han-sans/), [WenQuanYi Micro Hei](http://wenq.org/wqy2/)
+
+We would also like to thank the [Web Chinese Fonts Plan](https://chinese-font.netlify.app) for offering open-source tools that enable the use of Chinese fonts on the web.
 
 ---
 
@@ -299,8 +227,8 @@ The following fonts are utilized in this software, either bundled within the app
 
 [badge-website]: https://img.shields.io/badge/website-readest.com-orange
 [badge-web-app]: https://img.shields.io/badge/read%20online-web.readest.com-orange
-[badge-license]: https://img.shields.io/github/license/readest/readest?color=teal
-[badge-release]: https://img.shields.io/github/release/readest/readest?color=green
+[badge-license]: https://img.shields.io/badge/license-AGPL--3.0-teal
+[badge-release]: https://img.shields.io/github/v/release/readest/readest?color=green
 [badge-platforms]: https://img.shields.io/badge/platforms-macOS%2C%20Windows%2C%20Linux%2C%20Android%2C%20iOS%2C%20Web%2C%20PWA-green
 [badge-last-commit]: https://img.shields.io/github/last-commit/readest/readest?color=blue
 [badge-commit-activity]: https://img.shields.io/github/commit-activity/m/readest/readest?color=blue
@@ -315,6 +243,7 @@ The following fonts are utilized in this software, either bundled within the app
 [link-website]: https://readest.com?utm_source=github&utm_medium=referral&utm_campaign=readme
 [link-flathub]: https://flathub.org/en/apps/com.bilingify.readest
 [link-web-readest]: https://web.readest.com
+[link-docs]: https://readest.com/docs
 [link-gh-releases]: https://github.com/readest/readest/releases
 [link-gh-commits]: https://github.com/readest/readest/commits/main
 [link-gh-pulse]: https://github.com/readest/readest/pulse
@@ -326,4 +255,6 @@ The following fonts are utilized in this software, either bundled within the app
 [link-deepwiki]: https://deepwiki.com/readest/readest
 [link-locales]: https://github.com/readest/readest/tree/main/apps/readest-app/public/locales
 [link-kosync-wiki]: https://github.com/readest/readest/wiki/Sync-with-Koreader-devices
+[link-readalong]: https://github.com/readest/readest/blob/main/apps/readest-app/docs/read-along-narration.md
+[link-storyteller]: https://storyteller-platform.dev/
 [link-reddit]: https://reddit.com/r/readest/

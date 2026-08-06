@@ -2,24 +2,29 @@ import clsx from 'clsx';
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 
 import { BookNote, HighlightColor } from '@/types/book';
-import { Point, TextSelection } from '@/utils/sel';
+import { Point, rangeFromAnchorToPoint, TextSelection } from '@/utils/sel';
+import { useEnv } from '@/context/EnvContext';
 import { useThemeStore } from '@/store/themeStore';
+import { useReaderStore } from '@/store/readerStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useResponsiveSize } from '@/hooks/useResponsiveSize';
 import { useAnnotationEditor } from '../../hooks/useAnnotationEditor';
-import { getHighlightColorHex } from '../../utils/annotatorUtil';
+import { getExternalDragHandle, getHighlightColorHex } from '../../utils/annotatorUtil';
+import MagnifierLoupe from './MagnifierLoupe';
 
 interface HandleProps {
+  hidden?: boolean;
   position: Point;
   isVertical: boolean;
   type: 'start' | 'end';
   color: string;
-  onDragStart: () => void;
+  onDragStart: (pointerType: string) => void;
   onDrag: (point: Point) => void;
   onDragEnd: () => void;
 }
 
-const Handle: React.FC<HandleProps> = ({
+export const Handle: React.FC<HandleProps> = ({
+  hidden,
   position,
   isVertical,
   type,
@@ -38,7 +43,7 @@ const Handle: React.FC<HandleProps> = ({
       e.preventDefault();
       e.stopPropagation();
       isDragging.current = true;
-      onDragStart();
+      onDragStart(e.pointerType);
       (e.target as HTMLElement).setPointerCapture(e.pointerId);
     },
     [onDragStart],
@@ -68,7 +73,10 @@ const Handle: React.FC<HandleProps> = ({
 
   return (
     <div
-      className='pointer-events-auto absolute z-50 cursor-grab touch-none active:cursor-grabbing'
+      className={clsx(
+        'pointer-events-auto absolute z-50 cursor-grab touch-none active:cursor-grabbing',
+        hidden && 'hidden',
+      )}
       style={{
         left: isVertical
           ? type === 'start'
@@ -128,9 +136,13 @@ interface AnnotationRangeEditorProps {
   annotation: BookNote;
   selection: TextSelection;
   handleColor: HighlightColor;
+  externalDragPoint?: Point | null;
   getAnnotationText: (range: Range) => Promise<string>;
   setSelection: React.Dispatch<React.SetStateAction<TextSelection | null>>;
   onStartEdit: () => void;
+  noteAutoTurnPoint: (point: Point | null) => void;
+  cancelAutoTurn: () => void;
+  onAutoTurn: (cb: () => void) => () => void;
 }
 
 const AnnotationRangeEditor: React.FC<AnnotationRangeEditorProps> = ({
@@ -139,29 +151,42 @@ const AnnotationRangeEditor: React.FC<AnnotationRangeEditorProps> = ({
   annotation,
   selection,
   handleColor,
+  externalDragPoint,
   getAnnotationText,
   setSelection,
   onStartEdit,
+  noteAutoTurnPoint,
+  cancelAutoTurn,
+  onAutoTurn,
 }) => {
+  const { appService } = useEnv();
   const { settings } = useSettingsStore();
   const { isDarkMode } = useThemeStore();
+  const { getViewSettings } = useReaderStore();
+  const viewSettings = getViewSettings(bookKey);
   const isEink = settings.globalViewSettings.isEink;
   const einkFgColor = isDarkMode ? '#ffffff' : '#000000';
-  const { handlePositions, getHandlePositionsFromRange, handleAnnotationRangeChange } =
+  const { handlePositions, getHandlePositionsFromRange, applyAnnotationRange } =
     useAnnotationEditor({ bookKey, annotation, getAnnotationText, setSelection });
 
-  const initializedRef = useRef(false);
   const handleColorHex = getHighlightColorHex(settings, handleColor) ?? '#FFFF00';
   const draggingRef = useRef<'start' | 'end' | null>(null);
+  const dragPointerTypeRef = useRef<string>('');
   const startRef = useRef<Point>({ x: 0, y: 0 });
   const endRef = useRef<Point>({ x: 0, y: 0 });
+  // The non-dragged end captured as a DOM position at drag start so the range
+  // survives a corner auto page-turn (a window coordinate would re-target to
+  // whatever scrolls under it, losing the previous page's part).
+  const fixedAnchorRef = useRef<{ node: Node; offset: number } | null>(null);
+  const lastBuiltRef = useRef<{ range: Range; index: number } | null>(null);
+  // Unsubscribe for the after-turn re-emit while a handle is being dragged.
+  const autoTurnUnsubRef = useRef<(() => void) | null>(null);
+  const [draggingHandle, setDraggingHandle] = useState<'start' | 'end' | null>(null);
   const [currentStart, setCurrentStart] = useState<Point>({ x: 0, y: 0 });
   const [currentEnd, setCurrentEnd] = useState<Point>({ x: 0, y: 0 });
+  const [loupePoint, setLoupePoint] = useState<Point | null>(null);
 
   useEffect(() => {
-    if (initializedRef.current) return;
-    initializedRef.current = true;
-
     const range = selection.range;
     const positions = getHandlePositionsFromRange(range, isVertical);
     if (positions) {
@@ -171,6 +196,11 @@ const AnnotationRangeEditor: React.FC<AnnotationRangeEditorProps> = ({
       }, 0);
       startRef.current = positions.start;
       endRef.current = positions.end;
+    }
+    // Keep the anchor base in sync with the current annotation range so a fresh
+    // drag anchors against this annotation, not a previously edited one.
+    if (!draggingRef.current) {
+      lastBuiltRef.current = { range: selection.range, index: selection.index };
     }
   }, [annotation, selection, isVertical, getHandlePositionsFromRange]);
 
@@ -184,46 +214,118 @@ const AnnotationRangeEditor: React.FC<AnnotationRangeEditorProps> = ({
     endRef.current = handlePositions.end;
   }, [handlePositions]);
 
-  const handleStartDragStart = useCallback(() => {
-    draggingRef.current = 'start';
-    onStartEdit();
-  }, [onStartEdit]);
+  // Build the edited range from the DOM-anchored non-dragged end to the dragged
+  // handle position, apply it, and feed the dragged point into the corner
+  // auto-turn so the page can turn mid-edit.
+  const updateFromDraggedPoint = useCallback(
+    (point: Point) => {
+      const anchor = fixedAnchorRef.current;
+      if (!anchor) return;
+      const doc = anchor.node.ownerDocument;
+      const win = doc?.defaultView;
+      if (!doc || !win) return;
+      const feRect = win.frameElement?.getBoundingClientRect();
+      const built = rangeFromAnchorToPoint(
+        doc,
+        anchor.node,
+        anchor.offset,
+        point.x - (feRect?.left ?? 0),
+        point.y - (feRect?.top ?? 0),
+      );
+      if (!built) return;
+      lastBuiltRef.current = { range: built, index: selection.index };
+      noteAutoTurnPoint(viewSettings?.scrolled ? null : point);
+      applyAnnotationRange(built, selection.index, isVertical, true);
+    },
+    [selection.index, isVertical, applyAnnotationRange, noteAutoTurnPoint, viewSettings?.scrolled],
+  );
 
-  const handleEndDragStart = useCallback(() => {
-    draggingRef.current = 'end';
-    onStartEdit();
-  }, [onStartEdit]);
+  // Rebuild from the held handle position after an auto page-turn so the edited
+  // range extends onto the new page without waiting for the next move.
+  const subscribeAutoTurnReemit = useCallback(() => {
+    autoTurnUnsubRef.current?.();
+    autoTurnUnsubRef.current = onAutoTurn(() => {
+      const point = draggingRef.current === 'start' ? startRef.current : endRef.current;
+      updateFromDraggedPoint(point);
+    });
+  }, [onAutoTurn, updateFromDraggedPoint]);
+
+  const handleStartDragStart = useCallback(
+    (pointerType: string) => {
+      const base = lastBuiltRef.current?.range ?? selection.range;
+      fixedAnchorRef.current = { node: base.endContainer, offset: base.endOffset };
+      draggingRef.current = 'start';
+      dragPointerTypeRef.current = pointerType;
+      setDraggingHandle('start');
+      setLoupePoint({ ...startRef.current });
+      subscribeAutoTurnReemit();
+      onStartEdit();
+    },
+    [selection, onStartEdit, subscribeAutoTurnReemit],
+  );
+
+  const handleEndDragStart = useCallback(
+    (pointerType: string) => {
+      const base = lastBuiltRef.current?.range ?? selection.range;
+      fixedAnchorRef.current = { node: base.startContainer, offset: base.startOffset };
+      draggingRef.current = 'end';
+      dragPointerTypeRef.current = pointerType;
+      setDraggingHandle('end');
+      setLoupePoint({ ...endRef.current });
+      subscribeAutoTurnReemit();
+      onStartEdit();
+    },
+    [selection, onStartEdit, subscribeAutoTurnReemit],
+  );
 
   const handleStartDrag = useCallback(
     (point: Point) => {
       setCurrentStart(point);
+      setLoupePoint(point);
       startRef.current = point;
-      handleAnnotationRangeChange(point, endRef.current, isVertical, true);
+      updateFromDraggedPoint(point);
     },
-    [isVertical, handleAnnotationRangeChange],
+    [updateFromDraggedPoint],
   );
 
   const handleEndDrag = useCallback(
     (point: Point) => {
       setCurrentEnd(point);
+      setLoupePoint(point);
       endRef.current = point;
-      handleAnnotationRangeChange(startRef.current, point, isVertical, true);
+      updateFromDraggedPoint(point);
     },
-    [isVertical, handleAnnotationRangeChange],
+    [updateFromDraggedPoint],
   );
 
   const handleDragEnd = useCallback(() => {
     draggingRef.current = null;
-    handleAnnotationRangeChange(startRef.current, endRef.current, isVertical, false);
-  }, [isVertical, handleAnnotationRangeChange]);
+    setDraggingHandle(null);
+    setLoupePoint(null);
+    cancelAutoTurn();
+    autoTurnUnsubRef.current?.();
+    autoTurnUnsubRef.current = null;
+    const last = lastBuiltRef.current;
+    if (last) {
+      applyAnnotationRange(last.range, last.index, isVertical, false);
+    }
+  }, [isVertical, applyAnnotationRange, cancelAutoTurn]);
 
   if (currentStart.x === 0 && currentStart.y === 0) {
     return null;
   }
 
+  const loupeDragPoint = externalDragPoint;
+  const effectiveLoupePoint = loupePoint ?? loupeDragPoint;
+  const activeHandle =
+    draggingHandle ?? getExternalDragHandle(currentStart, currentEnd, loupeDragPoint);
+
+  const showLoupe = appService?.isMobile && !viewSettings?.isEink && !viewSettings?.vertical;
+
   return (
     <div className='pointer-events-none fixed inset-0 z-50'>
       <Handle
+        hidden={activeHandle === 'end' || loupeDragPoint !== null}
         position={currentStart}
         isVertical={isVertical}
         type='start'
@@ -233,6 +335,7 @@ const AnnotationRangeEditor: React.FC<AnnotationRangeEditorProps> = ({
         onDragEnd={handleDragEnd}
       />
       <Handle
+        hidden={activeHandle === 'start' || loupeDragPoint !== null}
         position={currentEnd}
         isVertical={isVertical}
         type='end'
@@ -241,6 +344,14 @@ const AnnotationRangeEditor: React.FC<AnnotationRangeEditorProps> = ({
         onDrag={handleEndDrag}
         onDragEnd={handleDragEnd}
       />
+      {showLoupe && effectiveLoupePoint && (
+        <MagnifierLoupe
+          bookKey={bookKey}
+          dragPoint={effectiveLoupePoint}
+          isVertical={isVertical}
+          color={handleColorHex}
+        />
+      )}
     </div>
   );
 };

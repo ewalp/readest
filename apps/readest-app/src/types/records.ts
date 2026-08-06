@@ -11,8 +11,12 @@ export interface DBBook {
   tags?: string[];
   progress?: [number, number];
   reading_status?: string;
+  reading_status_updated_at?: string | null;
+  cover_hash?: string | null;
+  cover_updated_at?: string | null;
 
   metadata?: string | null;
+  metadata_updated_at?: string | null;
   created_at?: string;
   updated_at?: string;
   deleted_at?: string | null;
@@ -26,6 +30,7 @@ export interface DBBookConfig {
   location?: string;
   xpointer?: string;
   progress?: string;
+  rsvp_position?: string;
   search_config?: string;
   view_settings?: string;
 
@@ -40,11 +45,15 @@ export interface DBBookNote {
   meta_hash?: string;
   id: string;
   type: string;
-  cfi: string;
+  cfi?: string;
+  xpointer0?: string;
+  xpointer1?: string;
+  page?: number;
   text?: string;
   style?: string;
   color?: string;
   note: string;
+  global?: boolean;
 
   created_at?: string;
   updated_at?: string;

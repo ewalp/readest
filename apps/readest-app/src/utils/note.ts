@@ -3,10 +3,18 @@ import nunjucks from 'nunjucks';
 export type NoteTemplateData = {
   title: string;
   author: string;
-  exportDate: number;
+  exportDate: number | string;
+  /** Public cover image URL; empty/absent when no cover could be resolved. */
+  coverImageUrl?: string;
   chapters: {
     title: string;
     annotations: {
+      id?: string;
+      cfi?: string;
+      bookHash?: string;
+      link?: string;
+      webLink?: string;
+      appLink?: string;
       text: string;
       note?: string;
       style?: string;
@@ -30,6 +38,10 @@ env.addFilter('date', (value: number | string | undefined, format?: string) => {
   if (value === undefined || value === null) return '';
 
   let date: Date;
+  // Check if the input is a date-only string (YYYY-MM-DD) which gets parsed as UTC midnight
+  // In this case, we should use UTC methods to avoid timezone offset issues
+  const isDateOnlyString = typeof value === 'string' && /^\d{4}-\d{2}-\d{2}$/.test(value);
+
   if (typeof value === 'number') {
     date = new Date(value);
   } else if (typeof value === 'string') {
@@ -45,37 +57,74 @@ env.addFilter('date', (value: number | string | undefined, format?: string) => {
   }
 
   // Convert Python strftime format to actual values
+  // Use UTC methods for date-only strings to maintain consistency
+  const getYear = () => (isDateOnlyString ? date.getUTCFullYear() : date.getFullYear());
+  const getMonth = () => (isDateOnlyString ? date.getUTCMonth() : date.getMonth());
+  const getDate = () => (isDateOnlyString ? date.getUTCDate() : date.getDate());
+  const getHours = () => (isDateOnlyString ? date.getUTCHours() : date.getHours());
+  const getMinutes = () => (isDateOnlyString ? date.getUTCMinutes() : date.getMinutes());
+  const getSeconds = () => (isDateOnlyString ? date.getUTCSeconds() : date.getSeconds());
+  const getDay = () => (isDateOnlyString ? date.getUTCDay() : date.getDay());
+
   return format
-    .replace(/%Y/g, date.getFullYear().toString())
-    .replace(/%m/g, String(date.getMonth() + 1).padStart(2, '0'))
-    .replace(/%d/g, String(date.getDate()).padStart(2, '0'))
-    .replace(/%H/g, String(date.getHours()).padStart(2, '0'))
-    .replace(/%M/g, String(date.getMinutes()).padStart(2, '0'))
-    .replace(/%S/g, String(date.getSeconds()).padStart(2, '0'))
-    .replace(/%I/g, String(date.getHours() % 12 || 12).padStart(2, '0'))
-    .replace(/%p/g, date.getHours() >= 12 ? 'PM' : 'AM')
-    .replace(/%w/g, String(date.getDay()))
-    .replace(/%j/g, getDayOfYear(date).toString().padStart(3, '0'))
-    .replace(/%U/g, getWeekNumber(date).toString().padStart(2, '0'))
-    .replace(/%W/g, getWeekNumber(date, true).toString().padStart(2, '0'))
-    .replace(/%a/g, date.toLocaleDateString('en-US', { weekday: 'short' }))
-    .replace(/%A/g, date.toLocaleDateString('en-US', { weekday: 'long' }))
-    .replace(/%b/g, date.toLocaleDateString('en-US', { month: 'short' }))
-    .replace(/%B/g, date.toLocaleDateString('en-US', { month: 'long' }))
+    .replace(/%Y/g, getYear().toString())
+    .replace(/%m/g, String(getMonth() + 1).padStart(2, '0'))
+    .replace(/%d/g, String(getDate()).padStart(2, '0'))
+    .replace(/%H/g, String(getHours()).padStart(2, '0'))
+    .replace(/%M/g, String(getMinutes()).padStart(2, '0'))
+    .replace(/%S/g, String(getSeconds()).padStart(2, '0'))
+    .replace(/%I/g, String(getHours() % 12 || 12).padStart(2, '0'))
+    .replace(/%p/g, getHours() >= 12 ? 'PM' : 'AM')
+    .replace(/%w/g, String(getDay()))
+    .replace(/%j/g, getDayOfYear(date, isDateOnlyString).toString().padStart(3, '0'))
+    .replace(/%U/g, getWeekNumber(date, false, isDateOnlyString).toString().padStart(2, '0'))
+    .replace(/%W/g, getWeekNumber(date, true, isDateOnlyString).toString().padStart(2, '0'))
+    .replace(
+      /%a/g,
+      date.toLocaleDateString('en-US', {
+        weekday: 'short',
+        timeZone: isDateOnlyString ? 'UTC' : undefined,
+      }),
+    )
+    .replace(
+      /%A/g,
+      date.toLocaleDateString('en-US', {
+        weekday: 'long',
+        timeZone: isDateOnlyString ? 'UTC' : undefined,
+      }),
+    )
+    .replace(
+      /%b/g,
+      date.toLocaleDateString('en-US', {
+        month: 'short',
+        timeZone: isDateOnlyString ? 'UTC' : undefined,
+      }),
+    )
+    .replace(
+      /%B/g,
+      date.toLocaleDateString('en-US', {
+        month: 'long',
+        timeZone: isDateOnlyString ? 'UTC' : undefined,
+      }),
+    )
     .replace(/%%/g, '%');
 });
 
 // Helper to get day of year
-function getDayOfYear(date: Date): number {
-  const start = new Date(date.getFullYear(), 0, 0);
+function getDayOfYear(date: Date, useUTC = false): number {
+  const year = useUTC ? date.getUTCFullYear() : date.getFullYear();
+  const start = useUTC ? new Date(Date.UTC(year, 0, 0)) : new Date(year, 0, 0);
   const diff = date.getTime() - start.getTime();
   const oneDay = 1000 * 60 * 60 * 24;
   return Math.floor(diff / oneDay);
 }
 
 // Helper to get week number
-function getWeekNumber(date: Date, mondayFirst = false): number {
-  const d = new Date(Date.UTC(date.getFullYear(), date.getMonth(), date.getDate()));
+function getWeekNumber(date: Date, mondayFirst = false, useUTC = false): number {
+  const year = useUTC ? date.getUTCFullYear() : date.getFullYear();
+  const month = useUTC ? date.getUTCMonth() : date.getMonth();
+  const day = useUTC ? date.getUTCDate() : date.getDate();
+  const d = new Date(Date.UTC(year, month, day));
   const dayNum = mondayFirst ? d.getUTCDay() || 7 : d.getUTCDay();
   d.setUTCDate(d.getUTCDate() + 4 - dayNum);
   const yearStart = new Date(Date.UTC(d.getUTCFullYear(), 0, 1));
@@ -171,6 +220,50 @@ env.addFilter('nl2br', (value: string) => {
   if (!value || typeof value !== 'string') return '';
   return value.replace(/\n/g, '<br>\n');
 });
+
+/**
+ * Formats text as a markdown block quote, prefixing every line with `> `.
+ */
+export function formatBlockQuote(text: string): string {
+  return text
+    .split('\n')
+    .map((line) => `> ${line}`)
+    .join('\n');
+}
+
+// Add 'blockquote' filter (prefix every line with > for markdown block quotes)
+env.addFilter('blockquote', (value: string) => {
+  if (!value || typeof value !== 'string') return '';
+  return formatBlockQuote(value);
+});
+
+/**
+ * Builds the markdown for copying a single annotation (highlight/note) together
+ * with a deep link back to its position, ready to paste into note apps like
+ * Obsidian. Mirrors the default markdown-export layout: a block-quoted highlight,
+ * an optional bold note line, and an italic link line. Empty blocks are omitted;
+ * the link line is always present. Label strings are passed in already translated
+ * to keep this helper i18n-agnostic.
+ */
+export function buildAnnotationCopyMarkdown({
+  text,
+  note,
+  noteLabel,
+  url,
+  linkLabel,
+}: {
+  text?: string;
+  note?: string;
+  noteLabel: string;
+  url: string;
+  linkLabel: string;
+}): string {
+  const blocks: string[] = [];
+  if (text) blocks.push(formatBlockQuote(text));
+  if (note) blocks.push(`**${noteLabel}**: ${note}`);
+  blocks.push(`*[${linkLabel}](${url})*`);
+  return blocks.join('\n\n');
+}
 
 /**
  * Renders a Jinja2/Nunjucks template with the given data

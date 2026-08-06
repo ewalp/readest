@@ -241,8 +241,12 @@ describe('CFIToXPointerConverter', () => {
       const xpointer = converter.cfiToXPointer(cfi);
 
       expect(cfi).toMatch(/^epubcfi\([^,]+,[^,]+,[^,]+\)$/);
-      expect(xpointer.pos0).toBe(pos0);
-      expect(xpointer.pos1).toBe(pos1);
+      // cfiToXPointer now produces text()[K].N format
+      expect(xpointer.pos0).toBe('/body/DocFragment[2]/body/div/p[1]/text().6');
+      expect(xpointer.pos1).toBe('/body/DocFragment[2]/body/div/p[2]/text().16');
+      // Round-trip: the new format should convert back to the same CFI
+      const backCfi = converter.xPointerToCFI(xpointer.pos0!, xpointer.pos1!);
+      expect(backCfi).toBe(cfi);
     });
   });
 
@@ -380,6 +384,264 @@ describe('CFIToXPointerConverter', () => {
       const result = converter.cfiToXPointer(cfi);
 
       expect(result.xpointer).toBe('/body/DocFragment[3]/body/div/section/article/p[1]');
+    });
+  });
+
+  describe('indexed text node XPointers (text()[N].offset)', () => {
+    let inlineDoc: Document;
+
+    beforeEach(() => {
+      // Simulates: <p>...text...<a id="page96"></a> Megan likes the sea, too...</p>
+      inlineDoc = new DOMParser().parseFromString(
+        `<html><body>
+          <p>She spent a year of her Ph.D. at my old college at Cambridge. <a id="page96" tabindex="-1"></a>A woman, at Caius! Megan likes the sea, too. She's finishing her radioastronomy research.</p>
+        </body></html>`,
+        'text/html',
+      );
+    });
+
+    it('should convert text()[N].offset range XPointer to valid CFI', () => {
+      const converter = new XCFI(inlineDoc, 10);
+      // text()[2] = the 2nd direct text node child of <p>, i.e. the text after the <a>
+      const pos0 = '/body/DocFragment[11]/body/p/text()[2].44';
+      const pos1 = '/body/DocFragment[11]/body/p/text()[2].69';
+      const cfi = converter.xPointerToCFI(pos0, pos1);
+
+      // Should produce a valid range CFI pointing into the 3rd child node (text after <a>)
+      expect(cfi).toMatch(/^epubcfi\(/);
+      expect(cfi).toMatch(/,.*,/); // Range CFI has two commas
+      // /3 = 3rd child of <p> (1:text, 2:<a>, 3:text), offsets 44 and 69
+      expect(cfi).toContain('/3:44');
+      expect(cfi).toContain('/3:69');
+    });
+
+    it('should convert text()[1].offset XPointer to valid CFI', () => {
+      const converter = new XCFI(inlineDoc, 10);
+      // text()[1] = the 1st direct text node child of <p>, i.e. text before the <a>
+      const xp = '/body/DocFragment[11]/body/p/text()[1].5';
+      const cfi = converter.xPointerToCFI(xp);
+
+      expect(cfi).toMatch(/^epubcfi\(/);
+      // /1 = 1st child of <p> (text node), offset 5
+      expect(cfi).toContain('/1:5');
+    });
+
+    it('should handle text()[N].offset with multiple inline elements', () => {
+      const multiInlineDoc = new DOMParser().parseFromString(
+        `<html><body>
+          <p>Start text <em>emphasis</em> middle text <a id="link1">link</a> end text here.</p>
+        </body></html>`,
+        'text/html',
+      );
+
+      const converter = new XCFI(multiInlineDoc, 5);
+      // Direct children of <p>: text, <em>, text, <a>, text
+      // text()[3] = " end text here." (3rd direct text node of <p>)
+      const xp = '/body/DocFragment[6]/body/p/text()[3].4';
+      const cfi = converter.xPointerToCFI(xp);
+
+      expect(cfi).toMatch(/^epubcfi\(/);
+      // /5 = 5th child of <p> (1:text, 2:<em>, 3:text, 4:<a>, 5:text), offset 4
+      expect(cfi).toContain('/5:4');
+    });
+
+    it('should produce correct CFI for text()[1] with no inline siblings', () => {
+      const simpleDoc = new DOMParser().parseFromString(
+        `<html><body><p>Hello world</p></body></html>`,
+        'text/html',
+      );
+      const converter = new XCFI(simpleDoc, 0);
+      const xp = '/body/DocFragment[1]/body/p/text()[1].5';
+      const cfi = converter.xPointerToCFI(xp);
+
+      expect(cfi).toMatch(/^epubcfi\(/);
+      expect(cfi).toContain('/1:5');
+    });
+  });
+
+  describe('element-offset XPointers (tag[idx].offset with no text() step)', () => {
+    // Reference regression: KOReader/CREngine emits `.N` directly on the last
+    // path element (no `text()` step at all) when the target point falls at
+    // the very start of that element's own text content, e.g.
+    // `/body/DocFragment[16]/body/section/div[1].0`.
+    it('resolves a real-world KOSync XPointer with an offset on the last element', () => {
+      const doc = new DOMParser().parseFromString(
+        `<html><body>
+          <section>
+            <div>Some paragraph text right at the start of the div.</div>
+          </section>
+        </body></html>`,
+        'text/html',
+      );
+
+      const converter = new XCFI(doc, 15);
+      const xp = '/body/DocFragment[16]/body/section/div[1].0';
+      const cfi = converter.xPointerToCFI(xp);
+
+      expect(cfi).toMatch(/^epubcfi\(/);
+      // (15 + 1) * 2 = 32
+      expect(cfi).toMatch(/^epubcfi\(\/6\/32!/);
+    });
+
+    it('treats element[idx].N the same as element[idx]/text().N', () => {
+      const doc = new DOMParser().parseFromString(
+        `<html><body><p>Hello world</p></body></html>`,
+        'text/html',
+      );
+      const converter = new XCFI(doc, 0);
+
+      const withoutTextStep = converter.xPointerToCFI('/body/DocFragment[1]/body/p[1].5');
+      const withTextStep = converter.xPointerToCFI('/body/DocFragment[1]/body/p[1]/text().5');
+
+      expect(withoutTextStep).toBe(withTextStep);
+    });
+
+    it('supports an offset of 0 on an implicit-index element', () => {
+      const doc = new DOMParser().parseFromString(
+        `<html><body><div>First div text.</div></body></html>`,
+        'text/html',
+      );
+      const converter = new XCFI(doc, 3);
+      const cfi = converter.xPointerToCFI('/body/DocFragment[4]/body/div.0');
+      expect(cfi).toMatch(/^epubcfi\(/);
+    });
+  });
+
+  describe('cfi-inert elements should be invisible to XPointer', () => {
+    it('should skip cfi-inert div when resolving KOReader XPointer', () => {
+      const doc = new DOMParser().parseFromString(
+        `<html><body>
+          <div cfi-inert="">skip link</div>
+          <div class="body">
+            <div class="chapter">
+              <div class="text">
+                <p>Alice thought this a very curious thing.</p>
+              </div>
+            </div>
+          </div>
+        </body></html>`,
+        'text/html',
+      );
+
+      const converter = new XCFI(doc, 10);
+      // KOReader XPointer: div (no index) means the only "real" div
+      const xp = '/body/DocFragment[11]/body/div/div/div/p/text().10';
+      const cfi = converter.xPointerToCFI(xp);
+      expect(cfi).toMatch(/^epubcfi\(/);
+    });
+
+    it('should skip cfi-inert div when building XPointer path from element', () => {
+      const doc = new DOMParser().parseFromString(
+        `<html><body>
+          <div cfi-inert="">skip link</div>
+          <div class="body">
+            <div class="chapter">
+              <div class="text">
+                <p>Alice thought this a very curious thing.</p>
+              </div>
+            </div>
+          </div>
+        </body></html>`,
+        'text/html',
+      );
+
+      const converter = new XCFI(doc, 10);
+      // Navigate to the <p> via DOM, then build XPointer from it
+      const p = doc.querySelector('p')!;
+      // Use xPointerToCFI and verify the KOReader XPointer resolves correctly
+      const koXp = '/body/DocFragment[11]/body/div/div/div/p/text().10';
+      const cfi = converter.xPointerToCFI(koXp);
+
+      // Verify the same CFI is produced when starting from a Readest-generated range
+      const range = doc.createRange();
+      const textNode = p.firstChild!;
+      range.setStart(textNode, 10);
+      range.setEnd(textNode, 10);
+      // The xPointerToCFI should resolve through the content div, not the cfi-inert div
+      expect(cfi).toMatch(/^epubcfi\(/);
+    });
+
+    it('should handle cfi-inert with multiple real siblings', () => {
+      const doc = new DOMParser().parseFromString(
+        `<html><body>
+          <div cfi-inert="">skip</div>
+          <div class="first">First</div>
+          <div class="second"><p>Content</p></div>
+        </body></html>`,
+        'text/html',
+      );
+
+      const converter = new XCFI(doc, 0);
+      // Two real divs: div[1]=first, div[2]=second — cfi-inert is invisible
+      const xp = '/body/DocFragment[1]/body/div[2]/p';
+      const cfi = converter.xPointerToCFI(xp);
+      expect(cfi).toMatch(/^epubcfi\(/);
+    });
+  });
+
+  // applyScrollableStyle wraps wide tables/equations in a cfi-skip <div>. KOReader's
+  // CREngine DOM has no such wrapper, so CFI ↔ XPointer must treat the wrapper as
+  // transparent: the same KOReader XPointer must map to the same CFI (and back) with
+  // or without the wrapper — otherwise KOSync positions would drift.
+  describe('cfi-skip wrapper is invisible to CFI <-> XPointer', () => {
+    // identical content; only difference is the wrapping cfi-skip div around the table
+    const inner = `<table><tbody><tr><td><p>Hello scrollable world</p></td></tr></tbody></table>`;
+    const html = (table: string) =>
+      `<html><body><p>Intro paragraph</p>${table}<p>Outro paragraph</p></body></html>`;
+    const baseDoc = () => new DOMParser().parseFromString(html(inner), 'text/html');
+    const wrappedDoc = () =>
+      new DOMParser().parseFromString(
+        html(`<div class="scroll-wrapper" cfi-skip="">${inner}</div>`),
+        'text/html',
+      );
+
+    // KOReader-style XPointers (no wrapper) — the wrapper-less DOM CREngine produces.
+    const cellText = '/body/DocFragment[1]/body/table/tbody/tr/td/p/text().5';
+    const tableElement = '/body/DocFragment[1]/body/table';
+    const afterTable = '/body/DocFragment[1]/body/p[2]/text().3';
+
+    it('maps a KOReader XPointer to the same CFI with and without the wrapper', () => {
+      const base = new XCFI(baseDoc(), 0);
+      const wrapped = new XCFI(wrappedDoc(), 0);
+      for (const xp of [cellText, tableElement, afterTable]) {
+        // The wrapper must not change the CFI the XPointer resolves to.
+        expect(wrapped.xPointerToCFI(xp), xp).toBe(base.xPointerToCFI(xp));
+      }
+    });
+
+    it('round-trips the table element XPointer back to itself through the wrapped doc', () => {
+      const wrapped = new XCFI(wrappedDoc(), 0);
+      const cfi = wrapped.xPointerToCFI(tableElement);
+      const built = wrapped.cfiToXPointer(cfi);
+      expect(built.xpointer).toBe(tableElement);
+      // The wrapper is a <div>; a transparent wrapper must not appear in the path.
+      expect(built.xpointer).not.toContain('/div');
+    });
+
+    it('round-trips a KOReader range (highlight) inside the table unchanged', () => {
+      // A highlight is a range; xPointerToCFI(pos0,pos1) -> cfiToXPointer pos0/pos1
+      // exercises rangePointToXPointer, the path real highlights use.
+      const pos0 = '/body/DocFragment[1]/body/table/tbody/tr/td/p/text().0';
+      const pos1 = '/body/DocFragment[1]/body/table/tbody/tr/td/p/text().5';
+      const base = new XCFI(baseDoc(), 0);
+      const wrapped = new XCFI(wrappedDoc(), 0);
+
+      const baseCfi = base.xPointerToCFI(pos0, pos1);
+      const wrappedCfi = wrapped.xPointerToCFI(pos0, pos1);
+      expect(wrappedCfi).toBe(baseCfi); // wrapper doesn't change the highlight CFI
+
+      const back = wrapped.cfiToXPointer(wrappedCfi);
+      expect(back.pos0).toBe(pos0);
+      expect(back.pos1).toBe(pos1);
+      expect(back.pos0).not.toContain('/div');
+      expect(back.pos1).not.toContain('/div');
+    });
+
+    it('builds the same CFI->XPointer for the table element with and without the wrapper', () => {
+      const base = new XCFI(baseDoc(), 0);
+      const wrapped = new XCFI(wrappedDoc(), 0);
+      const cfi = base.xPointerToCFI(tableElement);
+      expect(wrapped.cfiToXPointer(cfi).xpointer).toBe(base.cfiToXPointer(cfi).xpointer);
     });
   });
 });

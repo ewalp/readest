@@ -3,7 +3,7 @@
  */
 
 // ISO 639-1 language codes (2-letter codes)
-// prettier-ignore
+// biome-ignore format: keep the ISO codes grouped by first letter
 const ISO_639_1_CODES = new Set([
   'aa', 'ab', 'ae', 'af', 'ak', 'am', 'an', 'ar', 'as', 'av', 'ay', 'az',
   'ba', 'be', 'bg', 'bh', 'bi', 'bm', 'bn', 'bo', 'br', 'bs',
@@ -90,7 +90,7 @@ export const validateAndNormalizeDate = (dateInput: string): ValidationResult<st
     }
 
     // Check if year is reasonable (between 1000 and current year + 10)
-    const year = date.getFullYear();
+    const year = parseInt(cleaned.substring(0, 4));
     const currentYear = new Date().getFullYear();
     if (year < 1000 || year > currentYear + 10) {
       return {

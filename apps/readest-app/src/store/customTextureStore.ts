@@ -8,19 +8,58 @@ import {
   unmountBackgroundTexture,
 } from '@/styles/textures';
 import { useSettingsStore } from './settingsStore';
+import { getReplicaPersistEnv } from '@/services/sync/replicaPersist';
+import { publishReplicaDelete, publishReplicaUpsert } from '@/services/sync/replicaPublish';
+import { TEXTURE_KIND } from '@/services/sync/adapters/texture';
+import { computeTextureContentId } from '@/services/imageService';
+import { migrateLegacyReplicas } from '@/services/sync/migrateLegacy';
+
+const publishTextureUpsert = (texture: CustomTexture): void => {
+  if (!texture.contentId) return;
+  void publishReplicaUpsert(TEXTURE_KIND, texture, texture.contentId, texture.reincarnation);
+};
+
+const publishTextureDelete = (contentId: string): void => {
+  void publishReplicaDelete(TEXTURE_KIND, contentId);
+};
 
 interface TextureStoreState {
   textures: CustomTexture[];
   loading: boolean;
 
   setTextures: (textures: CustomTexture[]) => void;
-  addTexture: (path: string) => CustomTexture;
+  addTexture: (
+    path: string,
+    options?: Partial<Omit<CustomTexture, 'id' | 'path'>>,
+  ) => CustomTexture;
   removeTexture: (id: string) => boolean;
   updateTexture: (id: string, updates: Partial<CustomTexture>) => boolean;
   getTexture: (id: string) => CustomTexture | undefined;
   getAllTextures: () => CustomTexture[];
   getAvailableTextures: () => CustomTexture[];
   clearAllTextures: () => void;
+
+  /** Look up a local texture by its cross-device contentId. */
+  findByContentId: (contentId: string) => CustomTexture | undefined;
+  /**
+   * Add a remote-sourced texture from a replica pull WITHOUT republishing.
+   * The placeholder lands with `unavailable: true`; the binary download
+   * handler clears the flag on completion.
+   */
+  applyRemoteTexture: (texture: CustomTexture) => void;
+  /** Soft-delete by contentId, skipping the publish call. */
+  softDeleteByContentId: (contentId: string) => void;
+  /** Clear the placeholder unavailable flag once binaries land on disk. */
+  markAvailableByContentId: (contentId: string) => void;
+  /**
+   * Activation path for a remote-pulled texture once its binary has
+   * landed on disk: clear the `unavailable` flag and load the file
+   * into a blob URL so the panel can render the swatch and so
+   * `applyTexture` can mount it without re-reading disk. Mirrors the
+   * font activation, minus the @font-face injection (textures only
+   * mount when selected via `applyTexture`).
+   */
+  activateTextureByContentId: (envConfig: EnvConfigType, contentId: string) => Promise<void>;
 
   applyTexture: (envConfig: EnvConfigType, textureId: string) => Promise<void>;
   loadTexture: (envConfig: EnvConfigType, textureId: string) => Promise<CustomTexture>;
@@ -48,16 +87,36 @@ export const useCustomTextureStore = create<TextureStoreState>((set, get) => ({
 
   setTextures: (textures) => set({ textures }),
 
-  addTexture: (path) => {
-    const texture = createCustomTexture(path);
+  addTexture: (path, options) => {
+    const texture = createCustomTexture(path, options);
     const existingTexture = get().textures.find((t) => t.id === texture.id);
 
     if (existingTexture) {
+      // Re-import of an existing texture. Under CRDT remove-wins, a plain
+      // upsert can't revive a server-side tombstone — the next pull would
+      // re-apply the delete and the texture silently disappears while
+      // logged into cloud sync (same latent bug as issue #4410). Mint a
+      // reincarnation token so the row surfaces as alive on every device's
+      // next pull. Covers both re-import after a local delete and re-import
+      // while the entry is still live but another device tombstoned the row
+      // (the token is inert when there's no tombstone). Preserve any
+      // existing token instead of churning a new one on each import.
+      // Mirrors dictionaryService's reincarnation logic.
+      const shouldMintReincarnation =
+        !!texture.contentId &&
+        !existingTexture.reincarnation &&
+        (!!existingTexture.deletedAt || existingTexture.contentId === texture.contentId);
+      const reincarnation =
+        texture.reincarnation ??
+        (shouldMintReincarnation
+          ? Math.random().toString(36).slice(2)
+          : existingTexture.reincarnation);
       get().updateTexture(texture.id, {
         ...texture,
         path: texture.path,
         downloadedAt: Date.now(),
         deletedAt: undefined,
+        reincarnation,
         loaded: false,
         blobUrl: undefined,
         error: undefined,
@@ -65,7 +124,9 @@ export const useCustomTextureStore = create<TextureStoreState>((set, get) => ({
       set((state) => ({
         textures: [...state.textures],
       }));
-      return existingTexture;
+      const refreshed = get().getTexture(texture.id) ?? existingTexture;
+      publishTextureUpsert(refreshed);
+      return refreshed;
     }
 
     const newTexture = {
@@ -77,6 +138,7 @@ export const useCustomTextureStore = create<TextureStoreState>((set, get) => ({
       textures: [...state.textures, newTexture],
     }));
 
+    publishTextureUpsert(newTexture);
     return newTexture;
   },
 
@@ -97,6 +159,7 @@ export const useCustomTextureStore = create<TextureStoreState>((set, get) => ({
     set((state) => ({
       textures: [...state.textures],
     }));
+    if (texture.contentId) publishTextureDelete(texture.contentId);
     return result;
   },
 
@@ -113,6 +176,60 @@ export const useCustomTextureStore = create<TextureStoreState>((set, get) => ({
     }));
 
     return true;
+  },
+
+  findByContentId: (contentId) =>
+    contentId ? get().textures.find((t) => t.contentId === contentId) : undefined,
+
+  applyRemoteTexture: (texture) => {
+    set((state) => {
+      const existingIdx = state.textures.findIndex((t) => t.id === texture.id);
+      const textures =
+        existingIdx >= 0
+          ? state.textures.map((t, i) =>
+              i === existingIdx ? { ...texture, deletedAt: undefined } : t,
+            )
+          : [...state.textures, texture];
+      return { textures };
+    });
+    const env = getReplicaPersistEnv();
+    if (env) void get().saveCustomTextures(env);
+  },
+
+  softDeleteByContentId: (contentId) => {
+    const target = get().textures.find((t) => t.contentId === contentId && !t.deletedAt);
+    if (!target) return;
+    set((state) => ({
+      textures: state.textures.map((t) =>
+        t.id === target.id ? { ...t, deletedAt: Date.now(), blobUrl: undefined, loaded: false } : t,
+      ),
+    }));
+    if (target.blobUrl) URL.revokeObjectURL(target.blobUrl);
+    const env = getReplicaPersistEnv();
+    if (env) void get().saveCustomTextures(env);
+  },
+
+  markAvailableByContentId: (contentId) => {
+    set((state) => ({
+      textures: state.textures.map((t) =>
+        t.contentId === contentId ? { ...t, unavailable: undefined } : t,
+      ),
+    }));
+    const env = getReplicaPersistEnv();
+    if (env) void get().saveCustomTextures(env);
+  },
+
+  activateTextureByContentId: async (envConfig, contentId) => {
+    get().markAvailableByContentId(contentId);
+    const target = get().textures.find((t) => t.contentId === contentId && !t.deletedAt);
+    if (!target) return;
+    try {
+      await get().loadTexture(envConfig, target.id);
+      const env = getReplicaPersistEnv();
+      if (env) await get().saveCustomTextures(env);
+    } catch (err) {
+      console.warn('activateTextureByContentId failed', contentId, err);
+    }
   },
 
   getTexture: (id) => {
@@ -319,6 +436,45 @@ export const useCustomTextureStore = create<TextureStoreState>((set, get) => ({
     }
   },
 }));
+
+/**
+ * Look up a texture by its cross-device contentId, falling back to the
+ * persisted `settings.customTextures` when the in-memory store is empty.
+ * The pull-side orchestrator runs at app boot — earlier than the color
+ * panel mount, so loadCustomTextures hasn't hydrated the zustand store
+ * yet. Without the fallback every refresh would mint a fresh bundleDir
+ * per row and re-download.
+ */
+export const findTextureByContentId = (contentId: string): CustomTexture | undefined => {
+  if (!contentId) return undefined;
+  const inMemory = useCustomTextureStore.getState().findByContentId(contentId);
+  if (inMemory) return inMemory;
+  const persisted = useSettingsStore.getState().settings?.customTextures ?? [];
+  return persisted.find((t) => t.contentId === contentId && !t.deletedAt);
+};
+
+/**
+ * One-time migration: rehash legacy flat-path textures (imported before
+ * replica sync shipped) into the per-bundle layout so they sync
+ * across devices without forcing the user to re-import. Idempotent;
+ * skips textures that already carry `contentId`. Implementation lives
+ * in `migrateLegacyReplicas` — shared with custom fonts.
+ */
+export const migrateLegacyTextures = (envConfig: EnvConfigType): Promise<void> =>
+  migrateLegacyReplicas<CustomTexture>(envConfig, {
+    kind: TEXTURE_KIND,
+    baseDir: 'Images',
+    getCandidates: () =>
+      useCustomTextureStore
+        .getState()
+        .textures.filter(
+          (t) => !t.contentId && !t.bundleDir && !t.deletedAt && !t.path.includes('/'),
+        ),
+    computeContentId: computeTextureContentId,
+    updateRecord: (id, next) => useCustomTextureStore.getState().updateTexture(id, next),
+    saveStore: (env) => useCustomTextureStore.getState().saveCustomTextures(env),
+    publishUpsert: publishTextureUpsert,
+  });
 
 // Cleanup blob URLs before page unload
 if (typeof window !== 'undefined') {

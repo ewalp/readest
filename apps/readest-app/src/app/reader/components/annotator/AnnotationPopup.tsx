@@ -26,6 +26,9 @@ interface AnnotationPopupProps {
   selectedColor: HighlightColor;
   popupWidth: number;
   popupHeight: number;
+  globalToggleAvailable?: boolean;
+  globalToggleActive?: boolean;
+  onToggleGlobal?: () => void;
   onHighlight: (update?: boolean) => void;
   onDismiss: () => void;
 }
@@ -43,6 +46,9 @@ const AnnotationPopup: React.FC<AnnotationPopupProps> = ({
   selectedColor,
   popupWidth,
   popupHeight,
+  globalToggleAvailable,
+  globalToggleActive,
+  onToggleGlobal,
   onHighlight,
   onDismiss,
 }) => {
@@ -54,11 +60,7 @@ const AnnotationPopup: React.FC<AnnotationPopupProps> = ({
         minHeight={isVertical ? popupWidth : popupHeight}
         position={position}
         trianglePosition={trianglePosition}
-        className={clsx(
-          'selection-popup bg-gray-600 text-white',
-          notes.length > 0 && 'bg-transparent',
-        )}
-        triangleClassName='text-gray-600'
+        className={clsx('selection-popup', notes.length > 0 && 'bg-transparent')}
         onDismiss={onDismiss}
       >
         <div className={clsx('flex h-full gap-4', isVertical ? 'flex-row' : 'flex-col')}>
@@ -104,6 +106,9 @@ const AnnotationPopup: React.FC<AnnotationPopupProps> = ({
                 popupHeight={isVertical ? popupWidth : popupHeight}
                 selectedStyle={selectedStyle}
                 selectedColor={selectedColor}
+                globalToggleAvailable={globalToggleAvailable}
+                globalToggleActive={globalToggleActive}
+                onToggleGlobal={onToggleGlobal}
                 onHandleHighlight={onHighlight}
               />
             )

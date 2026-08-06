@@ -1,5 +1,14 @@
 import clsx from 'clsx';
-import React, { useState, isValidElement, ReactElement, ReactNode, useRef } from 'react';
+import React, {
+  useState,
+  isValidElement,
+  ReactElement,
+  ReactNode,
+  useLayoutEffect,
+  useRef,
+  useId,
+} from 'react';
+import { useDropdownContext } from '@/context/DropdownContext';
 import { Overlay } from './Overlay';
 import MenuItem from './MenuItem';
 
@@ -8,6 +17,7 @@ interface DropdownProps {
   className?: string;
   menuClassName?: string;
   buttonClassName?: string;
+  containerClassName?: string;
   toggleButton: React.ReactNode;
   children: ReactElement<{
     setIsDropdownOpen: (isOpen: boolean) => void;
@@ -22,6 +32,8 @@ interface DropdownProps {
 type MenuItemProps = {
   setIsDropdownOpen?: (open: boolean) => void;
 };
+
+const MENU_VIEWPORT_PADDING = 16;
 
 const enhanceMenuItems = (
   children: ReactNode,
@@ -62,34 +74,62 @@ const Dropdown: React.FC<DropdownProps> = ({
   className,
   menuClassName,
   buttonClassName,
+  containerClassName,
   toggleButton,
   children,
   disabled,
   onToggle,
   showTooltip = true,
 }) => {
-  const [isOpen, setIsOpen] = useState(false);
-  const [isFocused, setIsFocused] = useState(false);
-  const lastInteractionWasTapOrClick = useRef(false);
+  const dropdownId = useId();
+  const context = useDropdownContext();
+  const isOpen = context ? context.openDropdownId === dropdownId : false;
   const containerRef = useRef<HTMLDivElement>(null);
+  const detailsRef = useRef<HTMLDetailsElement>(null);
+  const [isFocused, setIsFocused] = useState(false);
+
+  // The menu stays CSS-anchored next to its toggle (screen readers and Tab
+  // traverse it in DOM order), so a menu near a screen edge can stick out of
+  // the viewport (#5259). Measure the open menu and shift it back inside.
+  useLayoutEffect(() => {
+    if (!isOpen) return undefined;
+    const content = detailsRef.current?.querySelector<HTMLElement>(':scope > :not(summary)');
+    if (!content) return undefined;
+    const clamp = () => {
+      content.style.transform = '';
+      const rect = content.getBoundingClientRect();
+      let dx = 0;
+      if (rect.right > window.innerWidth - MENU_VIEWPORT_PADDING) {
+        dx = window.innerWidth - MENU_VIEWPORT_PADDING - rect.right;
+      }
+      if (rect.left + dx < MENU_VIEWPORT_PADDING) {
+        dx = MENU_VIEWPORT_PADDING - rect.left;
+      }
+      if (dx !== 0) {
+        content.style.transform = `translateX(${dx}px)`;
+      }
+    };
+    clamp();
+    window.addEventListener('resize', clamp);
+    const observer = typeof ResizeObserver !== 'undefined' ? new ResizeObserver(clamp) : null;
+    observer?.observe(content);
+    return () => {
+      window.removeEventListener('resize', clamp);
+      observer?.disconnect();
+      content.style.transform = '';
+    };
+  }, [isOpen]);
 
   const setIsDropdownOpen = (open: boolean) => {
     if (disabled) return;
-    setIsOpen(open);
-    onToggle?.(open);
-  };
-
-  const handleTouchOrClick = () => {
-    lastInteractionWasTapOrClick.current = true;
-    setTimeout(() => (lastInteractionWasTapOrClick.current = false), 200);
-  };
-
-  const handleFocus = () => {
-    setIsFocused(true);
-    // skip touch and pointer triggered focus, this is only for keyboard and aria navigation
-    if (!lastInteractionWasTapOrClick.current) {
-      setIsDropdownOpen(true);
+    if (context) {
+      if (open) {
+        context.openDropdown(dropdownId);
+      } else {
+        context.closeDropdown(dropdownId);
+      }
     }
+    onToggle?.(open);
   };
 
   const toggleDropdown = () => {
@@ -97,20 +137,13 @@ const Dropdown: React.FC<DropdownProps> = ({
     setIsDropdownOpen(!isOpen);
   };
 
-  const handleBlur = (e: React.FocusEvent) => {
-    if (process.env.NODE_ENV === 'development') {
-      return;
-    }
-    if (!containerRef.current) return;
-    if (!containerRef.current.contains(e.relatedTarget as Node)) {
-      setIsFocused(false);
-      setIsDropdownOpen(false);
-    }
-  };
-
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' || e.key === ' ') {
-      if (!isOpen) setIsDropdownOpen(true);
+      // Let the native button click (dispatched by the browser for Enter/Space
+      // on a focused button) drive the toggle — toggling here would race with
+      // that click and cancel it out. We still stop propagation so global
+      // shortcuts bound to Enter/Space (e.g. next page in the reader) don't
+      // fire while a dropdown button is focused.
       e.stopPropagation();
     } else if (e.key === 'Escape') {
       setIsDropdownOpen(false);
@@ -129,17 +162,11 @@ const Dropdown: React.FC<DropdownProps> = ({
     : children;
 
   return (
-    <div className='dropdown-container flex'>
+    <div ref={containerRef} className={clsx('dropdown-container flex', containerClassName)}>
       {isOpen && <Overlay onDismiss={() => setIsDropdownOpen(false)} />}
-      <div
-        ref={containerRef}
-        role='menu'
-        tabIndex={-1}
-        onBlur={handleBlur}
-        onKeyDown={handleKeyDown}
-        className={clsx('dropdown flex flex-col', className)}
-      >
+      <div className={clsx('relative', isOpen && 'z-50')}>
         <button
+          tabIndex={0}
           aria-haspopup='menu'
           aria-expanded={isOpen}
           aria-label={label}
@@ -149,16 +176,20 @@ const Dropdown: React.FC<DropdownProps> = ({
             isFocused && isOpen && 'bg-base-300/50',
             buttonClassName,
           )}
-          onTouchStart={handleTouchOrClick}
-          onPointerDown={handleTouchOrClick}
-          onFocus={handleFocus}
           onClick={toggleDropdown}
+          onKeyDown={handleKeyDown}
         >
           {toggleButton}
         </button>
-        <div role='none' className={clsx('flex items-center justify-center')}>
+        <details
+          ref={detailsRef}
+          open={isOpen}
+          role='none'
+          className={clsx('dropdown flex items-center justify-center', className)}
+        >
+          <summary aria-hidden='true' tabIndex={-1} className='list-none' />
           {isOpen && childrenWithToggle}
-        </div>
+        </details>
       </div>
     </div>
   );

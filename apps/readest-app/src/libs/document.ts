@@ -1,5 +1,6 @@
 import { BookFormat } from '@/types/book';
-import { Contributor, Identifier, LanguageMap } from '@/utils/book';
+import { Collection, Contributor, Identifier, LanguageMap } from '@/utils/book';
+import { configureZip } from '@/utils/zip';
 import * as epubcfi from 'foliate-js/epubcfi.js';
 
 export const CFI = epubcfi;
@@ -16,9 +17,20 @@ export interface TOCItem {
   id: number;
   label: string;
   href: string;
+  index: number; // Page index for PDF books
   cfi?: string;
   location?: Location;
   subitems?: TOCItem[];
+}
+
+export interface SectionFragment {
+  id: string;
+  href: string;
+  cfi: string;
+  size: number;
+  linear: string;
+  location?: Location;
+  fragments?: Array<SectionFragment>;
 }
 
 export interface SectionItem {
@@ -26,10 +38,30 @@ export interface SectionItem {
   cfi: string;
   size: number;
   linear: string;
+  href?: string;
   location?: Location;
   pageSpread?: 'left' | 'right' | 'center' | '';
+  fragments?: Array<SectionFragment>;
 
+  loadText?: () => Promise<string | null>;
   createDocument: () => Promise<Document>;
+
+  // EPUB 3 Media Overlays: the manifest item of this section's SMIL file, or
+  // null when the section has no recorded narration. Populated by foliate's
+  // EPUB parser from the spine item's `media-overlay` attribute.
+  mediaOverlay?: { href: string; id: string } | null;
+}
+
+// A Calibre custom column embedded in the OPF as "user metadata"; parsed by
+// foliate-js's getMetadata (see getCalibreUserMetadata in epub.js). `value`
+// is an array for multi-value columns, `extra` is the series index for
+// datatype 'series'.
+export interface CalibreCustomColumn {
+  label: string;
+  name: string;
+  datatype: string;
+  value: string | number | boolean | string[];
+  extra?: number;
 }
 
 export type BookMetadata = {
@@ -41,9 +73,14 @@ export type BookMetadata = {
   publisher?: string;
   published?: string;
   description?: string;
-  subject?: string | string[] | Contributor;
+  subject?: string | string[] | Contributor | Contributor[];
   identifier?: string;
+  isbn?: string;
   altIdentifier?: string | string[] | Identifier;
+  belongsTo?: {
+    collection?: Array<Collection> | Collection;
+    series?: Array<Collection> | Collection;
+  };
 
   subtitle?: string;
   series?: string;
@@ -53,21 +90,40 @@ export type BookMetadata = {
   coverImageFile?: string;
   coverImageUrl?: string;
   coverImageBlobUrl?: string;
+
+  calibreColumns?: CalibreCustomColumn[];
+  feedUrl?: string;
 };
 
 export interface BookDoc {
   metadata: BookMetadata;
-  rendition?: {
+  rendition: {
     layout?: 'pre-paginated' | 'reflowable';
     spread?: 'auto' | 'none';
     viewport?: { width: number; height: number };
   };
   dir: string;
   toc?: Array<TOCItem>;
-  sections?: Array<SectionItem>;
+  pageList?: Array<TOCItem>;
+  sections: Array<SectionItem>;
   transformTarget?: EventTarget;
   splitTOCHref(href: string): Array<string | number>;
   getCover(): Promise<Blob | null>;
+  // Present on formats that carry a real spine (EPUB); absent for the ones
+  // foliate-js gives synthetic per-index CFIs. Mirrors `view.resolveCFI`.
+  resolveCFI?(cfi: string): { index: number; anchor?: (doc: Document) => Range | number } | null;
+  // Formats backed by live parser state must be released explicitly: a PDF
+  // book holds a pdf.js document whose dedicated worker survives GC, so
+  // dropping the reference leaks the whole parsed file (#5387).
+  destroy?(): void | Promise<void>;
+
+  // Container access, present on EPUB. Recorded narration needs both: the SMIL
+  // files as text, the audio as blobs. Hrefs are zip paths, as resolved on
+  // manifest items.
+  loadText?(href: string): Promise<string | null>;
+  loadBlob?(href: string): Promise<Blob>;
+  // EPUB 3 `media:*` package metadata, used to name the narrator.
+  media?: { narrator?: string; duration?: number };
 }
 
 export const EXTS: Record<BookFormat, string> = {
@@ -96,16 +152,66 @@ export const MIMETYPES: Record<BookFormat, string[]> = {
   MD: ['text/markdown', 'text/x-markdown'],
 };
 
+export interface DocumentLoaderOptions {
+  /**
+   * Absolute filesystem path of `file`, used by Tauri builds to invoke the
+   * Rust EPUB pre-parser (`parse_epub_full`). When omitted (web platform,
+   * synthetic File, tests) the loader silently falls back to the
+   * zip.js-only path. Callers SHOULD pass it whenever they have one --
+   * the foliate-js init() drops from ~1.5s to ~0.3s on iOS for a typical
+   * EPUB when the prefetch cache is hit.
+   */
+  nativeFilePath?: string;
+}
+
 export class DocumentLoader {
   private file: File;
+  private nativeFilePath?: string;
 
-  constructor(file: File) {
+  constructor(file: File, options: DocumentLoaderOptions = {}) {
     this.file = file;
+    this.nativeFilePath = options.nativeFilePath;
   }
 
   private async isZip(): Promise<boolean> {
     const arr = new Uint8Array(await this.file.slice(0, 4).arrayBuffer());
-    return arr[0] === 0x50 && arr[1] === 0x4b && arr[2] === 0x03 && arr[3] === 0x04;
+    // Standard local file header signature is PK\x03\x04, but some non-conformant
+    // EPUB writers emit malformed bytes (e.g., PK\x03\x02) on the first entry.
+    // The archive is still readable via the central directory, so don't gate on
+    // the 4th byte. PK\x03 alone is enough to identify a local file header.
+    if (arr[0] === 0x50 && arr[1] === 0x4b && arr[2] === 0x03) {
+      return true;
+    }
+    // Some files have their first few bytes corrupted (e.g. Baidu Netdisk
+    // mangles the leading PK\x03\x04 into garbage on certain epubs). The zip
+    // format is officially located by walking the End-of-Central-Directory
+    // record at the *tail* of the file -- everything before it is allowed to
+    // be arbitrary data (self-extracting executables rely on this). So when
+    // the magic bytes look wrong, fall back to searching for the EOCD
+    // signature (PK\x05\x06) in the last 64 KiB of the file. If found, the
+    // file is still a usable zip and we should let zip.js try to read it.
+    return await this.hasEOCD();
+  }
+
+  private async hasEOCD(): Promise<boolean> {
+    // EOCD record is at least 22 bytes (sig + 16 + comment length); the
+    // trailing comment can be up to 64 KiB, so search the last 64 KiB + 22.
+    const maxEOCDSearch = 1024 * 64 + 22;
+    const sliceSize = Math.min(maxEOCDSearch, this.file.size);
+    if (sliceSize < 22) return false;
+    const tail = await this.file.slice(this.file.size - sliceSize, this.file.size).arrayBuffer();
+    const bytes = new Uint8Array(tail);
+    for (let i = bytes.length - 22; i >= 0; i--) {
+      if (
+        bytes[i] === 0x50 &&
+        bytes[i + 1] === 0x4b &&
+        bytes[i + 2] === 0x05 &&
+        bytes[i + 3] === 0x06
+      ) {
+        return true;
+      }
+    }
+    return false;
   }
 
   private async isPDF(): Promise<boolean> {
@@ -115,7 +221,10 @@ export class DocumentLoader {
     );
   }
 
-  private async makeZipLoader() {
+  private async makeZipLoader(prefetch?: {
+    textCache?: Map<string, string>;
+    sizes?: Map<string, number>;
+  }) {
     const getComment = async (): Promise<string | null> => {
       const EOCD_SIGNATURE = [0x50, 0x4b, 0x05, 0x06];
       const maxEOCDSearch = 1024 * 64;
@@ -141,25 +250,93 @@ export class DocumentLoader {
       return null;
     };
 
-    const { configure, ZipReader, BlobReader, TextWriter, BlobWriter } =
-      await import('@zip.js/zip.js');
+    await configureZip();
+    const { ZipReader, BlobReader, TextWriter, BlobWriter } = await import('@zip.js/zip.js');
     type Entry = import('@zip.js/zip.js').Entry;
-    configure({ useWebWorkers: false });
     const reader = new ZipReader(new BlobReader(this.file));
     const entries = await reader.getEntries();
     const map = new Map(entries.map((entry) => [entry.filename, entry]));
+    const lowercaseMap = new Map<string, Entry | null>();
+    for (const entry of entries) {
+      const lowercaseName = entry.filename.toLowerCase();
+      const existing = lowercaseMap.get(lowercaseName);
+      lowercaseMap.set(
+        lowercaseName,
+        existing && existing.filename !== entry.filename ? null : entry,
+      );
+    }
+    const getEntry = (name: string) =>
+      map.get(name) ?? lowercaseMap.get(name.toLowerCase()) ?? null;
     const load =
       (f: (entry: Entry, type?: string) => Promise<string | Blob> | null) =>
-      (name: string, ...args: [string?]) =>
-        map.has(name) ? f(map.get(name)!, ...args) : null;
+      (name: string, ...args: [string?]) => {
+        const entry = getEntry(name);
+        return entry ? f(entry, ...args) : null;
+      };
 
-    const loadText = load((entry: Entry) =>
+    const zipLoadText = load((entry: Entry) =>
       !entry.directory ? entry.getData(new TextWriter()) : null,
     );
     const loadBlob = load((entry: Entry, type?: string) =>
       !entry.directory ? entry.getData(new BlobWriter(type!)) : null,
     );
-    const getSize = (name: string) => map.get(name)?.uncompressedSize ?? 0;
+
+    // Prefetch fast-path: foliate-js's EPUB.init() reads container.xml,
+    // the OPF, the EPUB3 nav and (if present) the NCX via this very
+    // `loadText`. On Tauri we already have those bytes in memory from
+    // the Rust `parse_epub_full` command, so we hand them back without
+    // touching zip.js. Anything not in the cache falls through to the
+    // original zip.js path (CSS/HTML/font assets the reader pulls
+    // lazily as the user actually reads stay on the slow path, which
+    // is fine -- they're also tiny per-call and async).
+    const textCache = prefetch?.textCache;
+    const sizesOverride = prefetch?.sizes;
+
+    // In-flight dedupe for spine-text loads.
+    //
+    // foliate-js's `Section` exposes both `loadText()` and `createDocument()`
+    // (which internally re-runs `loadText` + parseFromString). Our nav
+    // pipeline (`computeBookNav` and `enrichTocFromNavElements`) needs both
+    // the raw HTML (for byte-size math + regex-based fragment locator) and
+    // the parsed Document (for CFI computation), so it ends up calling them
+    // back-to-back on the same href — without dedupe, every chapter pays for
+    // two zip.js inflate calls per `computeBookNav`. On iOS WebView a 100KB
+    // chapter inflate is ~3-5ms, so for a 100-section book this costs
+    // ~300-500ms per first open. The dedupe is a single Map lookup on the
+    // hot path, so the overhead when nothing is in flight is negligible.
+    //
+    // We intentionally only dedupe *concurrent* requests: as soon as the
+    // promise settles, we drop it from the map so we don't retain inflated
+    // chapter strings in memory (a long book is megabytes of text). This is
+    // safe because the only consumer that cares about reuse — nav
+    // computation — issues both calls in the same microtask span.
+    const inflight = new Map<string, Promise<string | null>>();
+    const dedupedZipLoadText = (name: string, ...args: [string?]): Promise<string | null> => {
+      const existing = inflight.get(name);
+      if (existing) return existing;
+      const p =
+        (zipLoadText(name, ...args) as Promise<string | null> | null) ?? Promise.resolve(null);
+      const wrapped = Promise.resolve(p).finally(() => {
+        // Release as soon as the promise settles; subsequent independent
+        // reads will re-inflate (intentional — we don't want a nav-time
+        // cache to hold the whole book in RAM).
+        if (inflight.get(name) === wrapped) inflight.delete(name);
+      });
+      inflight.set(name, wrapped);
+      return wrapped;
+    };
+
+    const loadText = textCache
+      ? (name: string, ...args: [string?]) => {
+          const cached = textCache.get(name);
+          if (cached !== undefined) return Promise.resolve(cached);
+          return dedupedZipLoadText(name, ...args);
+        }
+      : dedupedZipLoadText;
+
+    const getSize = sizesOverride
+      ? (name: string) => sizesOverride.get(name) ?? getEntry(name)?.uncompressedSize ?? 0
+      : (name: string) => getEntry(name)?.uncompressedSize ?? 0;
 
     return { entries, loadText, loadBlob, getSize, getComment, sha1: undefined };
   }
@@ -185,6 +362,26 @@ export class DocumentLoader {
     );
   }
 
+  private isTxt(): boolean {
+    // Tolerate MIME params (text/plain;charset=utf-8), uppercase extensions
+    // (BOOK.TXT), and a nameless Blob — otherwise a TXT can slip onto the
+    // non-text path and yield a null book.
+    return (
+      this.file.type.startsWith('text/plain') ||
+      (this.file.name?.toLowerCase().endsWith(`.${EXTS.TXT}`) ?? false)
+    );
+  }
+
+  private isMd(): boolean {
+    const name = this.file.name?.toLowerCase() ?? '';
+    return (
+      this.file.type === 'text/markdown' ||
+      this.file.type === 'text/x-markdown' ||
+      name.endsWith(`.${EXTS.MD}`) ||
+      name.endsWith('.markdown')
+    );
+  }
+
   public async open(): Promise<{ book: BookDoc; format: BookFormat }> {
     let book = null;
     let format: BookFormat = 'EPUB';
@@ -192,8 +389,38 @@ export class DocumentLoader {
       throw new Error('File is empty');
     }
     try {
+      // A raw .txt has no binary book format, so the checks below all miss and
+      // `book` stays null. Convert it to EPUB in-memory first (the same
+      // conversion the import path runs) and parse that. The managed library
+      // stores the already-converted EPUB, but the Android "Open with" transient
+      // path points the book at the original .txt, so it reaches us unconverted.
+      // Markdown is rendered to HTML at runtime (no EPUB conversion). Check
+      // this BEFORE isTxt() — a .md served as text/plain would otherwise be
+      // grabbed by the TXT->EPUB path above.
+      if (this.isMd()) {
+        const { makeMarkdownBook } = await import('@/utils/md');
+        return { book: await makeMarkdownBook(this.file), format: 'MD' };
+      }
+      if (this.isTxt()) {
+        const { TxtToEpubConverter } = await import('@/utils/txt');
+        const { file: epubFile } = await new TxtToEpubConverter().convert({ file: this.file });
+        return await new DocumentLoader(epubFile).open();
+      }
       if (await this.isZip()) {
-        const loader = await this.makeZipLoader();
+        // EPUB-only fast path: ask Rust to pre-read OPF/nav/ncx + sizes.
+        // CBZ/FBZ skip this -- they have no OPF and Rust has no parser
+        // for them. We probe `isEPUBLike()` (= isZip but not CBZ/FBZ)
+        // so the prefetch RPC only fires when it can actually be used.
+        const isEPUBLike = !this.isCBZ() && !this.isFBZ();
+        let prefetch: { textCache: Map<string, string>; sizes: Map<string, number> } | undefined;
+        if (isEPUBLike && this.nativeFilePath) {
+          const { tryNativePrefetchEpub } = await import('@/utils/tauriEpubBridge');
+          const native = await tryNativePrefetchEpub(this.nativeFilePath);
+          if (native) {
+            prefetch = { textCache: native.textCache, sizes: native.sizes };
+          }
+        }
+        const loader = await this.makeZipLoader(prefetch);
         const { entries } = loader;
 
         if (this.isCBZ()) {
@@ -248,9 +475,26 @@ export class DocumentLoader {
 
 export const getDirection = (doc: Document) => {
   const { defaultView } = doc;
-  const { writingMode, direction } = defaultView!.getComputedStyle(doc.body);
+  let { writingMode, direction } = defaultView!.getComputedStyle(doc.body);
+  // Some EPUBs set writing-mode on the first child of body instead of body itself
+  if (!writingMode || writingMode === 'horizontal-tb') {
+    const firstChild = doc.body.querySelector(':scope > :not([cfi-inert])');
+    if (firstChild) {
+      const childStyle = defaultView!.getComputedStyle(firstChild);
+      if (childStyle.writingMode === 'vertical-rl' || childStyle.writingMode === 'vertical-lr') {
+        writingMode = childStyle.writingMode;
+      }
+    }
+  }
   const vertical = writingMode === 'vertical-rl' || writingMode === 'vertical-lr';
-  const rtl = doc.body.dir === 'rtl' || direction === 'rtl' || doc.documentElement.dir === 'rtl';
+  // `vertical-rl` (Japanese/Chinese vertical) advances columns right-to-left even
+  // though its computed `direction` stays `ltr`, so the writing mode itself marks
+  // it RTL. Without this the reading ruler and page turns run backwards (#4865).
+  const rtl =
+    writingMode === 'vertical-rl' ||
+    doc.body.dir === 'rtl' ||
+    direction === 'rtl' ||
+    doc.documentElement.dir === 'rtl';
   return { vertical, rtl };
 };
 
@@ -275,4 +519,25 @@ export const getMimeTypeFromFileExt = (ext: string): string => {
     }
   }
   return 'application/octet-stream';
+};
+
+export const convertBlobUrlToDataUrl = async (blobUrl: string): Promise<string> => {
+  try {
+    const response = await fetch(blobUrl);
+    if (!response.ok) {
+      throw new Error(
+        `Failed to fetch blob from "${blobUrl}": ${response.status} ${response.statusText}`,
+      );
+    }
+    const blob = await response.blob();
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  } catch (error) {
+    console.error('Failed to convert blob to data URL:', error);
+    throw error;
+  }
 };

@@ -55,174 +55,170 @@
   <url type="bugtracker">https://github.com/readest/readest/issues</url>
   <url type="help">https://github.com/readest/readest/wiki</url>
   <url type="donation">https://github.com/sponsors/readest</url>
+  <url type="vcs-browser">https://github.com/readest/readest</url>
 
   <launchable type="desktop-id">com.bilingify.readest.desktop</launchable>
 
+  <requires>
+    <display_length compare="ge">360</display_length>
+  </requires>
+
+  <supports>
+    <control>keyboard</control>
+    <control>pointing</control>
+    <control>touch</control>
+  </supports>
+
   <releases>
-    <release version="0.9.98" date="2026-01-21">
+    <release version="0.11.20" date="2026-07-20">
       <description>
         <ul>
-          <li>Bookshelf: Added the ability to export original book files directly from the book details dialog</li>
-          <li>Bookshelf: Added a new sorting option to organize books by publish date</li>
-          <li>Bookshelf: Improved performance for large library with faster and more stable imports</li>
-          <li>OPDS: Improved download reliability by correctly detecting filenames for PDF and CBZ files</li>
-          <li>Proofreading: Added support for whole-word replacement to make text corrections more precise</li>
-          <li>Notes: Added the ability to export notes using a customizable template</li>
-          <li>PDF: Added support for panning within PDF documents for easier navigation</li>
-          <li>PDF: Improved performance by pre-rendering the next page for smoother page transitions</li>
-          <li>Text-to-Speech: Added support for word replacement to improve pronunciation during playback</li>
-          <li>Text-to-Speech: Fixed an issue where playback speed settings were not applied correctly on Linux</li>
-          <li>E-ink: Improved reading stability by preventing unwanted scrolling when animations are disabled or on e-ink devices</li>
-          <li>Discord: Added Discord Rich Presence to display your current reading status on Desktop platforms</li>
-          <li>Android: Fixed an issue that could cause occasional crashes during app startup</li>
-          <li>Fonts: Improved web font loading for faster and more stable text rendering</li>
+          <li>Text-to-Speech: Read-aloud voices can now be downloaded per book for offline listening, and adjustable pauses between sentences and paragraphs</li>
+          <li>Text-to-Speech: Added CarPlay support on iOS and more reliable Android Auto controls so you can listen while driving</li>
+          <li>Sync: Added OneDrive as a cloud provider, you can now sync to several providers at once</li>
+          <li>Reading: Added a right-edge swipe to change Auto Scroll speed, footnotes in Markdown books, and copying text now keeps its paragraph breaks</li>
+          <li>Reading: Smoother page-turn animations, steadier text selection on iOS, and a redesigned custom theme editor that stays readable on mobile</li>
+          <li>Annotations: You can now copy a highlight or note together with a deep link that jumps straight back to its spot in the book</li>
+          <li>Library: You can now sort and filter your shelf by time remaining, and the Recently Read shelf and widget show only books you're currently reading</li>
+          <li>PDF: Fixed a crash that could happen when turning pages or zooming large PDFs on iOS</li>
+          <li>More: Fixed OPDS catalogs disappearing after a restart, and improved 32-bit Android stability</li>
         </ul>
       </description>
     </release>
-    <release version="0.9.97" date="2026-01-10">
+    <release version="0.11.18" date="2026-07-08">
       <description>
         <ul>
-          <li>Annotations: Added annotation bubble icons directly on text with instant note popups</li>
-          <li>Annotations: Enabled quick highlighting when selecting text</li>
-          <li>Annotations: Added the ability to edit the text range of existing highlights</li>
-          <li>Annotations: Added an annotation navigation bar for easier browsing</li>
-          <li>OPDS: Fixed an issue where CBZ files could not be downloaded from OPDS catalogs</li>
-          <li>OPDS: Improved compatibility with Komga OPDS servers</li>
-          <li>OPDS: Added support for OPDS servers using self-signed SSL certificates</li>
-          <li>PDF: Fixed an issue where some PDF files failed to open</li>
-          <li>E-ink: Optimized colors and layout for improved e-ink device readability</li>
-          <li>Search: Added search term history for quicker repeated searches</li>
-          <li>Text-to-Speech: Reduced excessive pauses between sentences for smoother playback</li>
-          <li>File Transfer: Introduced a background transfer queue for uploading and downloading books</li>
-          <li>Proofreading: Added a proofread tool that can replace text directly within books</li>
+          <li>Reading: Added Auto Scroll, a hands-free mode that scrolls the page for you at an adjustable pace, plus middle-click autoscroll on the desktop</li>
+          <li>Reading: Added slide and page-curl animations when turning pages for a more natural feel</li>
+          <li>Reading: Fixed page turning and the reading ruler for vertical right-to-left books, PDF text selection when system font scaling is on, and header/footer readability over light PDFs in dark mode</li>
+          <li>Text-to-Speech: Redesigned read-aloud as a mini player with an expandable full player, and playback now keeps going even after you close the book</li>
+          <li>Text-to-Speech: Online voices now play gap-free with chapter seeking and lock-screen controls, plus Android Auto support so you can listen in the car</li>
+          <li>Sync: Added S3-compatible cloud storage and a new Cloud Sync screen to choose and switch between your sync providers</li>
+          <li>Integrations: Added a Calibre plugin to push books and custom columns into Readest, and improved OPDS sign-in and auto-download for self-hosted catalogs</li>
+          <li>Library: New books dropped into watched folders now import automatically, and you can sort your shelf by reading progress</li>
+          <li>More: Added a speak button in the dictionary popup, a cleaner theme switcher, and per-rule toggles for proofreading</li>
         </ul>
       </description>
     </release>
-    <release version="0.9.96" date="2025-12-19">
+    <release version="0.11.17" date="2026-06-29">
       <description>
         <ul>
-          <li>TTS: Resolved an issue where Edge TTS was blocked in certain regions</li>
-          <li>OPDS: Improved compatibility with older versions of Calibre Web</li>
-          <li>OPDS: Added an instant search bar for faster browsing in OPDS catalogs</li>
-          <li>OPDS: Added a curated book catalog from Standard Ebooks</li>
-          <li>Bookshelf: Added a “Group Books” action to the context menu</li>
-          <li>Comics: Fixed layout issues to improve comic book reading</li>
-          <li>Layout: Footnote popups now adapt correctly to different screen sizes</li>
-          <li>Layout: Fixed an issue where the maximum inline width was not applied to EPUBs</li>
-          <li>Sync: Improved file downloading by correctly handling special characters in filenames</li>
-          <li>UI: Added an option to temporarily dismiss the reading progress bar</li>
-          <li>Settings: Screen brightness adjustments now apply only to the reader view</li>
-          <li>iOS: You can now open files directly in Readest from the Files app</li>
-          <li>macOS: Added a global menu option to open files with Readest</li>
+          <li>Sync: Added WebDAV and Google Drive sync for your books and reading data</li>
+          <li>Widgets: Added home-screen reading widgets on mobile so you can jump straight back into your book</li>
+          <li>Reading: You can now open and read Markdown(.md) files</li>
+          <li>Reading: You can select a word by double-clicking it, and search gained regex and nearby-words modes</li>
+          <li>Reading: Added a sticky progress bar with chapter markers, and keyboard shortcuts to fine-tune text selection</li>
+          <li>Library: Added a Recently Read shelf to quickly pick up where you left off, plus a separate background texture for your library</li>
+          <li>Text-to-Speech: Added offline voices on iOS, a setting to highlight by word or by sentence</li>
+          <li>PDF: Smoother pinch-zoom and panning, faster scrolling on mobile, and a new contrast option in the view menu</li>
+          <li>More: Customize the highlight toolbar across all books, filter exported annotations by color and style</li>
         </ul>
       </description>
     </release>
-    <release version="0.9.95" date="2025-12-08">
+    <release version="0.11.12" date="2026-06-20">
       <description>
         <ul>
-          <li>OPDS: You can now search, browse, and download ebooks directly from OPDS catalogs</li>
-          <li>OPDS: Improved compatibility with Calibre Web for reliable downloads</li>
-          <li>OPDS: Fixed an issue where book covers from self-hosted Calibre OPDS servers did not display correctly</li>
-          <li>Cloud Storage: You can view and delete files stored in your cloud storage directly from the app</li>
-          <li>Bookshelf: Added support for importing books from a folder recursively</li>
-          <li>Bookshelf: You can now rename your bookshelf groups</li>
-          <li>EPUB: Added support for SVG covers from Standard Ebooks</li>
-          <li>Annotations: Keyboard shortcuts no longer copy selected text into the notebook</li>
-          <li>Footnotes: Footnote popups now scale properly on small screens</li>
-          <li>Touch/Styli: Removed the context menu for smoother interaction on touch and stylus devices</li>
-          <li>Layout: Devices with unfoldable screens now automatically switch to a two-column layout</li>
-          <li>PDF: Improved zoomed-in navigation and hand-tool behavior for smoother page navigation</li>
-          <li>Android: Fixed highlighting of the current sentence when using native Android text-to-speech</li>
-          <li>Android: Back button handling now works correctly on Android 15 and above</li>
-          <li>Android: You can now open files shared from other apps</li>
+          <li>Reading: Fixed full-page cover images and cover backgrounds that didn't display correctly under a page texture</li>
+          <li>Reading: Fixed a crash when opening large PDF files on mobile devices</li>
+          <li>Reading: You can now save or share an image straight from the image viewer</li>
+          <li>Speed Reading: Fixed the control bar overlapping the playback controls on mobile</li>
+          <li>Sync: Books without a reading status no longer jump back to the top after every sync</li>
+          <li>Sync: Your per-device reading view settings now stay local instead of syncing between devices</li>
+          <li>OPDS: Fixed the Add Catalog dialog appearing behind Settings on mobile</li>
         </ul>
       </description>
     </release>
-    <release version="0.9.94" date="2025-12-02">
+    <release version="0.11.10" date="2026-06-19">
       <description>
         <ul>
-          <li>OPDS: You can now browse and download ebooks directly from OPDS catalogs</li>
-          <li>PDF: Added a hand-tool mode that makes navigating PDF pages easier</li>
-          <li>Covers: You can now choose a folder to save the latest book cover image</li>
-          <li>CJK: Added one-tap conversion between Simplified and Traditional Chinese</li>
-          <li>Shortcuts: Use Ctrl + mouse wheel to quickly zoom in or out</li>
-          <li>Library: Added a new option to adjust cover sizes in grid view</li>
-          <li>Windows: Added Ebook thumbnails with book covers in Windows Explorer</li>
-          <li>TTS: Fixed an issue where the page would scroll when showing the annotator</li>
-          <li>Annotations: Resolved layout shifts when selecting text in paginated mode on Android</li>
-          <li>Files: Improved backup handling to prevent file corruption</li>
-          <li>Layout: Fixed text clipping caused by negative indents</li>
-          <li>E-ink: Improved sidebar and notebook background colors for e-ink devices</li>
-          <li>Android: The Back button now works properly in menus, dialogs, and alerts</li>
-          <li>iOS: Fixed occasional failures when opening books on older iOS versions (16.4 and below)</li>
+          <li>Reading: Added Word Lens, which shows a quick translation above difficult words as you read</li>
+          <li>Reading: Added real page numbers from the book's own page list, and the current page now appears under the active chapter in the table of contents</li>
+          <li>Reading: Added Webtoon Mode for seamless, gap-free scrolling through comics and image books, and you can now tap an image or table to open it full-screen</li>
+          <li>Reading Stats: Track your reading time and pages, now synced across your devices and with KOReader</li>
+          <li>Library: Unlock the app with your fingerprint or Face ID, browse books by series in list view, search any title on Goodreads</li>
+          <li>Integrations: Hardcover progress and notes sync automatically, OPDS catalogs gained search and richer descriptions</li>
+          <li>Text-to-Speech: Words are highlighted one at a time as they're read aloud, with read-along following you through paragraph and speed reading modes</li>
+          <li>Speed Reading: Added a start delay, word-by-word stepping, dictionary lookups, keyboard shortcuts, and your reading font now styles the focused word</li>
+          <li>Dictionary: Word variations now resolve to their base forms, with more reliable system dictionary lookups on Android and iOS</li>
+          <li>Annotations: Customize the highlight toolbar, share selected text to other apps, and highlights now render correctly over bulleted lists</li>
+          <li>Platform: Added an opt-in nightly update channel for early access to new features, plus faster, smoother reading and many platform fixes</li>
         </ul>
       </description>
     </release>
-    <release version="0.9.93" date="2025-11-20">
+    <release version="0.11.4" date="2026-06-03">
       <description>
         <ul>
-          <li>Sync: Improved reliability for new accounts so your books sync correctly from the start</li>
-          <li>Library: Fixed an occasional issue where returning to the library could get stuck</li>
-          <li>Layout: Improved image display in paginated mode so images won't exceed the available height</li>
-          <li>TXT: Improved performance and stability when opening and parsing TXT files</li>
-          <li>Fonts: Fixed an issue where monospace fonts were not applied correctly in code blocks</li>
+          <li>Library: You can now send a book file directly from the bookshelf selection popup</li>
+          <li>Reading: Wide tables now scroll sideways, and oversized images or code blocks scroll in place instead of accidentally turning the page</li>
+          <li>Reading: Fixed page backgrounds, textures, and full-page cover images that didn't display correctly in paginated and scrolled modes</li>
+          <li>Reading: Fixed bright table and note backgrounds that didn't match the page in dark mode</li>
+          <li>Reading: Fixed the reading ruler drifting while scrolling and a stray line at the bottom of the page</li>
+          <li>Fonts: Fixed custom fonts disappearing after re-importing, and they now apply correctly inside books</li>
+          <li>PDF: Fixed scanned PDFs not displaying in installed app builds</li>
+          <li>Annotations: The annotation list now scrolls back to your nearest highlight, and exporting to Readwise works again on desktop</li>
+          <li>Android: Fixed a freeze when long-pressing images, plus issues with copying text and opening books directly from other apps</li>
+          <li>Fixes: Kept the book menu order stable, synced KOReader book covers, and fixed a Windows launch crash</li>
         </ul>
       </description>
     </release>
-    <release version="0.9.92" date="2025-11-18">
+    <release version="0.11.2" date="2026-05-31">
       <description>
         <ul>
-          <li>Bookshelf: Added support for nested groups to organize your books more flexibly</li>
-          <li>Sync: Improved reliability by automatically retrying failed book syncs</li>
-          <li>Sync: Improved token refresh so login sessions stay active longer on KOReader</li>
-          <li>E-Ink: Enhanced readability on the library page for E-Ink devices</li>
-          <li>UI: Storage capacity is now displayed with precise values in the user profile</li>
-          <li>Reader: You can now import files directly into the currently selected book group</li>
-          <li>Account: You can now update the email address linked to your Readest account</li>
-          <li>Footnotes: Added compatibility for more footnote formats</li>
+          <li>Send to Readest: Clip web pages and articles into your library via the system share sheet, or by emailing them in</li>
+          <li>Dictionary: Look up words with your device's built-in system dictionary on macOS, iOS, and Android, plus faster MDict and StarDict imports</li>
+          <li>Library: Import books from a folder with format and size filters, or read them in place from external folders without copying</li>
+          <li>Reading: The reading ruler now follows individual lines, you can swipe along the edge to adjust brightness on mobile, and customize hardware-button page turning</li>
+          <li>Annotations: Create global highlights that apply to every matching passage in a book</li>
+          <li>Text-to-Speech: Added a hotkey to highlight the sentence being read aloud, and made TTS more reliable</li>
+          <li>Fonts: Fixed custom fonts disappearing after restarting or reloading the app</li>
+          <li>iOS: Fixed the reader not updating when you switch between light and dark mode</li>
+          <li>Android: Fixed an issue where highlighting text could trigger unintended page turns</li>
+          <li>Fixes: Many improvements across PDFs, EPUBs, Sync, Scrolling, Highlighting</li>
         </ul>
       </description>
     </release>
-    <release version="0.9.91" date="2025-10-29">
+    <release version="0.11.1" date="2026-05-11">
       <description>
         <ul>
-          <li>TTS: Fixed an issue where system voices were not working on Android</li>
-          <li>TTS: Added options to customize the highlight style during read-aloud</li>
-          <li>E-Ink: Disabled all shadows to improve display clarity</li>
-          <li>E-Ink: Added an option to save the last book cover on Android</li>
-          <li>Android: Fixed a crash that occurred when toggling 'Allow Script'</li>
-          <li>Android: Adjusted launcher icon size for better compatibility across devices</li>
+          <li>Dictionaries: You can now import your own StarDict and MDict dictionaries</li>
+          <li>Sync: Your custom dictionaries, custom fonts, background textures and OPDS catalogs now sync across devices</li>
+          <li>KOReader Sync: Browse your full Readest Library from inside KOReader, with improved sync diagnostics</li>
+          <li>OPDS: Stream books over OPDS-PSE and optionally auto-download new titles from feeds</li>
+          <li>Sharing: Create share links for books, jump directly to book via deep links in exported annotations</li>
+          <li>Library: Added an optional 4-digit PIN lock at app launch to keep your library private</li>
+          <li>Library: You can now drag entire folders to import books</li>
+          <li>Reading: Added support for inline CJK ruby annotations (warichu/Gezhu), improved footnote detection</li>
+          <li>Speed Reading: Reading position now resumes correctly across devices and inside long sections</li>
+          <li>Fixes: Many fixes across PDFs, MOBIs, EPUBs, TTS, scrolling, and accessibility</li>
         </ul>
       </description>
     </release>
-    <release version="0.9.90" date="2025-10-28">
+    <release version="0.10.6" date="2026-04-13">
       <description>
         <ul>
-          <li>Sync: Faster library syncing and support for in-app one-time purchases of extra cloud storage</li>
-          <li>TTS: You can now choose the target language for read-aloud on translated books</li>
-          <li>Reader: New keyboard shortcuts make it easier to move between sections</li>
-          <li>Reader: Smoother scrolling for a more comfortable reading experience</li>
-          <li>Reader: Footnotes in definition lists are now fully supported</li>
-          <li>Reader: Improved search accuracy and display of search results</li>
-          <li>Reader: Clearer error messages when importing books</li>
-          <li>Reader: Improved safety when loading book content</li>
-          <li>Settings: You can now choose your own highlight colors</li>
-          <li>Settings: Added option to adjust screen brightness automatically</li>
-          <li>E-Ink: Better readability and clearer progress display with underlined links</li>
-          <li>Android: You can now store app data on an external SD card</li>
-          <li>iOS: Restores your last reading page if the app was closed in the background</li>
-          <li>Localization: Added Persian (Farsi) language support</li>
+          <li>Library: Much faster browsing for large collections</li>
+          <li>Reading: Added an option to keep the book's original paragraph layout</li>
+          <li>Reading: Fixed page navigation for Arabic books</li>
+          <li>PDF: Fixed TTS reading interruptions at line breaks in PDFs</li>
+          <li>PDF: You can now apply your chosen theme colors to PDFs</li>
+          <li>Sync: Added HTTP Basic auth support for CWA</li>
+          <li>Sync: Improved progress sync with Hardcover.app</li>
+          <li>OPDS: You can now edit your registered catalogs, with better handling of download filenames</li>
+          <li>Speed Reading: Your reading position now syncs across devices</li>
+          <li>Platform: Fixed window buttons on macOS, reduced crashes on iOS</li>
         </ul>
       </description>
     </release>
-    <release version="0.9.88" date="2025-10-18">
+    <release version="0.10.4" date="2026-04-06">
       <description>
         <ul>
-          <li>TTS: Fixed issue where the read-aloud indicator disappeared too quickly</li>
-          <li>Layout: Overriding book layout no longer affects explicitly set text alignment</li>
-          <li>Reader: Added localized number display for reading progress in vertical layout</li>
-          <li>Reader: Enhanced swipe responsiveness for smoother page transitions</li>
-          <li>Settings: Added an option to disable animations when using E-Ink mode</li>
+          <li>Annotations: You can now name your highlight colors, and your custom names sync across devices</li>
+          <li>Annotations: Fixed highlights that stayed on the page after being deleted from the sidebar</li>
+          <li>Speed Reading: Added an option to split long words, a faster countdown</li>
+          <li>Text-to-Speech: Fixed double playback when tapping the play button in quick succession</li>
+          <li>Accessibility: Dropdown menus now open reliably when activated with the keyboard</li>
+          <li>Reading: Background textures now display correctly when you override the theme background color</li>
+          <li>Translation: Temporarily disabled the Yandex provider while its service is unavailable</li>
         </ul>
       </description>
     </release>

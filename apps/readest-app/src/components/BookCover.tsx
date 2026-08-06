@@ -14,6 +14,7 @@ interface BookCoverProps {
   showSpine?: boolean;
   isPreview?: boolean;
   onImageError?: () => void;
+  onAspectRatioChange?: (ratio: number) => void;
 }
 
 const BookCover: React.FC<BookCoverProps> = memo<BookCoverProps>(
@@ -26,6 +27,7 @@ const BookCover: React.FC<BookCoverProps> = memo<BookCoverProps>(
     imageClassName,
     isPreview,
     onImageError,
+    onAspectRatioChange,
   }) => {
     const coverRef = useRef<HTMLDivElement>(null);
     const [imageLoaded, setImageLoaded] = useState(false);
@@ -46,10 +48,14 @@ const BookCover: React.FC<BookCoverProps> = memo<BookCoverProps>(
       }
     };
 
-    const handleImageLoad = () => {
+    const handleImageLoad = (e: React.SyntheticEvent<HTMLImageElement>) => {
       setImageLoaded(true);
       setImageError(false);
       toggleImageVisibility(true);
+      const img = e.currentTarget;
+      if (onAspectRatioChange && img.naturalWidth > 0 && img.naturalHeight > 0) {
+        onAspectRatioChange(img.naturalWidth / img.naturalHeight);
+      }
     };
 
     const handleImageError = () => {
@@ -74,6 +80,8 @@ const BookCover: React.FC<BookCoverProps> = memo<BookCoverProps>(
               src={book.metadata?.coverImageUrl || book.coverImageUrl!}
               alt={book.title}
               fill={true}
+              loading='lazy'
+              draggable={false}
               className={clsx('cover-image crop-cover-img object-cover', imageClassName)}
               onLoad={handleImageLoad}
               onError={handleImageError}
@@ -96,6 +104,8 @@ const BookCover: React.FC<BookCoverProps> = memo<BookCoverProps>(
                 width={0}
                 height={0}
                 sizes='100vw'
+                loading='lazy'
+                draggable={false}
                 className={clsx(
                   'cover-image fit-cover-img h-auto max-h-full w-auto max-w-full shadow-md',
                   imageClassName,
@@ -136,7 +146,7 @@ const BookCover: React.FC<BookCoverProps> = memo<BookCoverProps>(
                 isPreview ? 'text-[0.4em]' : mode === 'grid' ? 'text-base' : 'text-xs',
               )}
             >
-              {formatAuthors(book.author)}
+              {formatAuthors(book.author || book.metadata?.author || '')}
             </span>
           </div>
         </div>

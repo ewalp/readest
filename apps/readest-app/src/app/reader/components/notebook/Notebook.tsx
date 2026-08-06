@@ -1,5 +1,6 @@
 import clsx from 'clsx';
 import React, { useCallback, useEffect, useMemo, useState } from 'react';
+import { RiQuillPenLine } from 'react-icons/ri';
 
 import { useSettingsStore } from '@/store/settingsStore';
 import { useBookDataStore } from '@/store/bookDataStore';
@@ -9,50 +10,71 @@ import { useNotebookStore } from '@/store/notebookStore';
 import { useTranslation } from '@/hooks/useTranslation';
 import { useThemeStore } from '@/store/themeStore';
 import { useEnv } from '@/context/EnvContext';
-import { DragKey, useDrag } from '@/hooks/useDrag';
+import { useSwipeToDismiss } from '@/hooks/useSwipeToDismiss';
+import { usePanelResize } from '@/hooks/usePanelResize';
 import { TextSelection } from '@/utils/sel';
 import { BookNote } from '@/types/book';
 import { uniqueId } from '@/utils/misc';
 import { eventDispatcher } from '@/utils/event';
 import { getBookDirFromLanguage } from '@/utils/book';
+import { getPanelTopInset } from '@/utils/insets';
 import { Overlay } from '@/components/Overlay';
 import { saveSysSettings } from '@/helpers/settings';
 import { NOTE_PREFIX } from '@/types/view';
 import useShortcuts from '@/hooks/useShortcuts';
-import BooknoteItem from '../sidebar/BooknoteItem';
+import {
+  findAnnotationAtCfi,
+  removeBookNoteOverlays,
+  removeEmptyAnnotationPlaceholder,
+} from '../../utils/annotatorUtil';
 import AIAssistant from './AIAssistant';
 import NotebookHeader from './Header';
 import NoteEditor from './NoteEditor';
 import SearchBar from './SearchBar';
 import NotebookTabNavigation from './NotebookTabNavigation';
+import EmptyState from '../EmptyState';
 
 const MIN_NOTEBOOK_WIDTH = 0.15;
 const MAX_NOTEBOOK_WIDTH = 0.45;
 
 const Notebook: React.FC = ({}) => {
   const _ = useTranslation();
-  const { updateAppTheme, safeAreaInsets } = useThemeStore();
   const { envConfig, appService } = useEnv();
   const { settings } = useSettingsStore();
+  const { updateAppTheme, safeAreaInsets, systemUIVisible, statusBarHeight } = useThemeStore();
   const { sideBarBookKey } = useSidebarStore();
   const { notebookWidth, isNotebookVisible, isNotebookPinned, notebookActiveTab } =
     useNotebookStore();
   const { notebookNewAnnotation, notebookEditAnnotation, setNotebookPin } = useNotebookStore();
   const { getBookData, getConfig, saveConfig, updateBooknotes } = useBookDataStore();
-  const { getView, getViewSettings } = useReaderStore();
+  const { getView, getViewsById, getProgress, getViewSettings } = useReaderStore();
   const { getNotebookWidth, setNotebookWidth, setNotebookVisible, toggleNotebookPin } =
     useNotebookStore();
-  const { setNotebookNewAnnotation, setNotebookEditAnnotation, setNotebookActiveTab } =
+  const { setNotebookNewAnnotation, setNotebookNewHighlightId, setNotebookEditAnnotation, setNotebookActiveTab } =
     useNotebookStore();
 
   const [isSearchBarVisible, setIsSearchBarVisible] = useState(false);
   const [searchResults, setSearchResults] = useState<BookNote[] | null>(null);
   const [searchTerm, setSearchTerm] = useState('');
+  const isMobile = window.innerWidth < 640;
+  const [isFullHeightInMobile, setIsFullHeightInMobile] = useState(isMobile);
+
+  const {
+    panelRef: notebookRef,
+    overlayRef,
+    panelHeight: notebookHeight,
+    handleVerticalDragStart,
+  } = useSwipeToDismiss(
+    () => {
+      setNotebookVisible(false);
+      setIsFullHeightInMobile(isMobile);
+    },
+    (data) => setIsFullHeightInMobile(data.clientY < 44),
+  );
 
   const onNavigateEvent = async () => {
-    const pinButton = document.querySelector('.sidebar-pin-btn');
-    const isPinButtonHidden = !pinButton || window.getComputedStyle(pinButton).display === 'none';
-    if (isPinButtonHidden) {
+    const { isNotebookPinned } = useNotebookStore.getState();
+    if (!isNotebookPinned) {
       setNotebookVisible(false);
     }
   };
@@ -69,8 +91,10 @@ const Notebook: React.FC = ({}) => {
   useEffect(() => {
     if (isNotebookVisible) {
       updateAppTheme('base-200');
+      overlayRef.current = document.querySelector('.overlay') as HTMLDivElement | null;
     } else {
       updateAppTheme('base-100');
+      overlayRef.current = null;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isNotebookVisible]);
@@ -89,6 +113,14 @@ const Notebook: React.FC = ({}) => {
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  useEffect(() => {
+    if (!isNotebookVisible || notebookNewAnnotation || notebookEditAnnotation) {
+      setIsSearchBarVisible(false);
+      setSearchResults(null);
+      setSearchTerm('');
+    }
+  }, [isNotebookVisible, notebookNewAnnotation, notebookEditAnnotation]);
 
   const handleNotebookResize = (newWidth: string) => {
     setNotebookWidth(newWidth);
@@ -109,6 +141,59 @@ const Notebook: React.FC = ({}) => {
     saveSysSettings(envConfig, 'globalReadSettings', newGlobalReadSettings);
   };
 
+  // Abandon a note-creation flow: tear down the empty highlight the "Annotate"
+  // action eagerly created as the note anchor so it doesn't leak into the
+  // booknotes list (#4791). A saved note carries text, so it survives the guard
+  // in removeEmptyAnnotationPlaceholder; a restyled pre-existing highlight has no
+  // tracked id and is left alone. `bookKey` is passed explicitly so the unmount/
+  // book-switch cleanup targets the book the placeholder belongs to.
+  const handleCancelNewAnnotation = useCallback(
+    (bookKey: string | null) => {
+      const { notebookNewHighlightId } = useNotebookStore.getState();
+      if (bookKey && notebookNewHighlightId) {
+        const config = getConfig(bookKey);
+        const { booknotes: annotations = [] } = config || {};
+        const placeholder = removeEmptyAnnotationPlaceholder(
+          annotations,
+          notebookNewHighlightId,
+          Date.now(),
+        );
+        if (placeholder) {
+          const views = getViewsById(bookKey.split('-')[0]!);
+          views.forEach((view) => removeBookNoteOverlays(view, placeholder));
+          const updatedConfig = updateBooknotes(bookKey, annotations);
+          if (updatedConfig) {
+            // Read settings fresh: this callback has stable identity (empty deps)
+            // so a captured `settings` would go stale across saves.
+            saveConfig(envConfig, bookKey, updatedConfig, useSettingsStore.getState().settings);
+          }
+        }
+      }
+      setNotebookNewHighlightId(null);
+      setNotebookNewAnnotation(null);
+    },
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [],
+  );
+
+  // The "Annotate" action keeps a placeholder highlight alive only while its
+  // editor is on screen. The moment that creation flow stops being presented —
+  // Cancel/Escape (selection cleared), the notebook closing, swipe-dismiss, or a
+  // navigate — clean the placeholder up (#4791). Save clears the tracked id (and
+  // the placeholder gains note text), so this no-ops for saved annotations.
+  useEffect(() => {
+    if (!(isNotebookVisible && notebookNewAnnotation)) {
+      handleCancelNewAnnotation(sideBarBookKey);
+    }
+  }, [isNotebookVisible, notebookNewAnnotation, sideBarBookKey, handleCancelNewAnnotation]);
+
+  // Switching books (notebook pinned, so it stays presented) or closing the
+  // reader leaves the placeholder behind; clean it up against the book we are
+  // leaving on the way out (#4791).
+  useEffect(() => {
+    return () => handleCancelNewAnnotation(sideBarBookKey);
+  }, [sideBarBookKey, handleCancelNewAnnotation]);
+
   const handleClickOverlay = () => {
     setNotebookVisible(false);
     setNotebookNewAnnotation(null);
@@ -124,28 +209,57 @@ const Notebook: React.FC = ({}) => {
     if (!cfi) return;
 
     const { booknotes: annotations = [] } = config;
-    const annotation: BookNote = {
-      id: uniqueId(),
-      type: 'annotation',
-      cfi,
-      note,
-      text: selection.text,
-      createdAt: Date.now(),
-      updatedAt: Date.now(),
-    };
-    view?.addAnnotation({ ...annotation, value: `${NOTE_PREFIX}${annotation.cfi}` });
-    annotations.push(annotation);
+    const existingIndex = findAnnotationAtCfi(annotations, cfi);
+    if (existingIndex !== -1) {
+      // Attach the note to the existing highlight at this CFI instead of
+      // creating a second record. The highlight overlay (value = cfi) already
+      // exists; add the note bubble overlay (value = NOTE_PREFIX+cfi).
+      const existing = annotations[existingIndex]!;
+      const updated: BookNote = {
+        ...existing,
+        note,
+        text: selection.text || existing.text,
+        updatedAt: Date.now(),
+      };
+      annotations[existingIndex] = updated;
+      view?.addAnnotation({ ...updated, value: `${NOTE_PREFIX}${updated.cfi}` });
+    } else {
+      // No highlight at this CFI yet (e.g. a note added without first
+      // highlighting): create one unified record with the current global style
+      // so the note still shows an underlying highlight, and draw both overlays.
+      const style = settings.globalReadSettings.highlightStyle;
+      const color = settings.globalReadSettings.highlightStyles[style];
+      const annotation: BookNote = {
+        id: uniqueId(),
+        type: 'annotation',
+        cfi,
+        style,
+        color,
+        note,
+        page: selection.page,
+        text: selection.text,
+        createdAt: Date.now(),
+        updatedAt: Date.now(),
+      };
+      view?.addAnnotation(annotation);
+      view?.addAnnotation({ ...annotation, value: `${NOTE_PREFIX}${annotation.cfi}` });
+      annotations.push(annotation);
+    }
     const updatedConfig = updateBooknotes(sideBarBookKey, annotations);
     if (updatedConfig) {
       saveConfig(envConfig, sideBarBookKey, updatedConfig, settings);
     }
     setNotebookNewAnnotation(null);
+    // The placeholder now carries a note (or a fresh unified record was created),
+    // so it's a real annotation — drop the cancel-cleanup handle (#4791).
+    setNotebookNewHighlightId(null);
   };
 
   const handleEditNote = (note: BookNote, isDelete: boolean) => {
     if (!sideBarBookKey) return;
     const view = getView(sideBarBookKey);
     const config = getConfig(sideBarBookKey)!;
+    const progress = getProgress(sideBarBookKey)!;
     const { booknotes: annotations = [] } = config;
     const existingIndex = annotations.findIndex((item) => item.id === note.id);
     if (existingIndex === -1) return;
@@ -154,6 +268,7 @@ const Notebook: React.FC = ({}) => {
     } else {
       note.updatedAt = Date.now();
     }
+    note.page = progress.page;
     annotations[existingIndex] = note;
     view?.addAnnotation({ ...note, value: `${NOTE_PREFIX}${note.cfi}` }, true);
     const updatedConfig = updateBooknotes(sideBarBookKey, annotations);
@@ -163,31 +278,17 @@ const Notebook: React.FC = ({}) => {
     setNotebookEditAnnotation(null);
   };
 
-  const onDragMove = (data: { clientX: number }) => {
-    const widthFraction = 1 - data.clientX / window.innerWidth;
-    const newWidth = Math.max(MIN_NOTEBOOK_WIDTH, Math.min(MAX_NOTEBOOK_WIDTH, widthFraction));
-    handleNotebookResize(`${Math.round(newWidth * 10000) / 100}%`);
-  };
-
-  const onDragKeyDown = (data: { key: DragKey; step: number }) => {
-    const currentWidth = parseFloat(getNotebookWidth()) / 100;
-    let newWidth = currentWidth;
-
-    if (data.key === 'ArrowLeft') {
-      newWidth = Math.max(MIN_NOTEBOOK_WIDTH, currentWidth + data.step);
-    } else if (data.key === 'ArrowRight') {
-      newWidth = Math.min(MAX_NOTEBOOK_WIDTH, currentWidth - data.step);
-    }
-    handleNotebookResize(`${Math.round(newWidth * 10000) / 100}%`);
-  };
-
-  const { handleDragStart, handleDragKeyDown } = useDrag(onDragMove, onDragKeyDown);
+  const { handleResizeStart: handleDragStart, handleResizeKeyDown: handleDragKeyDown } =
+    usePanelResize({
+      side: 'end',
+      minWidth: MIN_NOTEBOOK_WIDTH,
+      maxWidth: MAX_NOTEBOOK_WIDTH,
+      getWidth: getNotebookWidth,
+      onResize: handleNotebookResize,
+    });
 
   const config = getConfig(sideBarBookKey);
   const { booknotes: allNotes = [] } = config || {};
-  const annotationNotes = allNotes
-    .filter((note) => note.type === 'annotation' && note.note && !note.deletedAt)
-    .sort((a, b) => b.createdAt - a.createdAt);
   const excerptNotes = allNotes
     .filter((note) => note.type === 'excerpt' && note.text && !note.deletedAt)
     .sort((a, b) => a.createdAt - b.createdAt);
@@ -199,14 +300,6 @@ const Notebook: React.FC = ({}) => {
       setSearchTerm('');
     }
   };
-
-  const filteredAnnotationNotes = useMemo(
-    () =>
-      isSearchBarVisible && searchResults
-        ? searchResults.filter((note) => note.type === 'annotation' && note.note && !note.deletedAt)
-        : annotationNotes,
-    [annotationNotes, searchResults, isSearchBarVisible],
-  );
 
   const filteredExcerptNotes = useMemo(
     () =>
@@ -226,8 +319,10 @@ const Notebook: React.FC = ({}) => {
   const { bookDoc } = bookData;
   const languageDir = getBookDirFromLanguage(bookDoc.metadata.language);
 
-  const hasSearchResults = filteredAnnotationNotes.length > 0 || filteredExcerptNotes.length > 0;
-  const hasAnyNotes = annotationNotes.length > 0 || excerptNotes.length > 0;
+  const hasSearchResults = filteredExcerptNotes.length > 0;
+  const hasAnyNotes = excerptNotes.length > 0;
+  const isNotesTabEmpty =
+    !notebookNewAnnotation && !notebookEditAnnotation && !isSearchBarVisible && !hasAnyNotes;
 
   if (!sideBarBookKey) return null;
 
@@ -235,14 +330,15 @@ const Notebook: React.FC = ({}) => {
     <>
       {!isNotebookPinned && (
         <Overlay
-          className={clsx('z-[45]', viewSettings?.isEink ? '' : 'bg-black/20')}
+          className={clsx('z-[45]', viewSettings?.isEink ? '' : 'bg-black/50 sm:bg-black/20')}
           onDismiss={handleClickOverlay}
         />
       )}
       <div
+        ref={notebookRef}
         className={clsx(
           'notebook-container right-0 flex min-w-60 select-none flex-col',
-          'full-height font-sans text-base font-normal sm:text-sm',
+          'full-height font-sans text-base font-normal transition-[padding-top] duration-300 sm:text-sm',
           viewSettings?.isEink ? 'bg-base-100' : 'bg-base-200',
           appService?.hasRoundedWindow && 'rounded-window-top-right rounded-window-bottom-right',
           isNotebookPinned ? 'z-20' : 'z-[45] shadow-2xl',
@@ -252,25 +348,37 @@ const Notebook: React.FC = ({}) => {
         aria-label={_('Notebook')}
         dir={viewSettings?.rtl && languageDir === 'rtl' ? 'rtl' : 'ltr'}
         style={{
-          width: `${notebookWidth}`,
-          maxWidth: `${MAX_NOTEBOOK_WIDTH * 100}%`,
-          position: isNotebookPinned ? 'relative' : 'absolute',
-          paddingTop: `${safeAreaInsets?.top || 0}px`,
+          width: isMobile ? '100%' : `${notebookWidth}`,
+          maxWidth: isMobile ? '100%' : `${MAX_NOTEBOOK_WIDTH * 100}%`,
+          position: isMobile ? 'fixed' : isNotebookPinned ? 'relative' : 'absolute',
+          paddingTop: `${getPanelTopInset({
+            isMobile,
+            isFullHeightInMobile,
+            systemUIVisible,
+            statusBarHeight,
+            safeAreaInsets,
+          })}px`,
         }}
       >
         <style jsx>{`
           @media (max-width: 1024px) {
             .notebook-container {
               ${isNotebookPinned ? '' : 'width: 100% !important; min-width: 100% !important; max-width: 100% !important;'}
+              border-top-left-radius: 16px;
+              border-top-right-radius: 16px;
             }
             :global(.drag-bar) {
               ${isNotebookPinned ? '' : 'display: none !important;'}
+            }
+            .overlay {
+              transition: opacity 0.3s ease-in-out;
             }
           }
         `}</style>
         <div
           className={clsx(
             'drag-bar absolute -left-2 top-0 h-full w-0.5 cursor-col-resize bg-transparent p-2',
+            isMobile && 'hidden',
           )}
           role='slider'
           tabIndex={0}
@@ -282,6 +390,20 @@ const Notebook: React.FC = ({}) => {
           onKeyDown={handleDragKeyDown}
         />
         <div className='flex-shrink-0'>
+          {isMobile && (
+            <div
+              role='slider'
+              tabIndex={0}
+              aria-label={_('Resize Notebook')}
+              aria-orientation='vertical'
+              aria-valuenow={notebookHeight.current}
+              className='drag-handle flex h-6 max-h-6 min-h-6 w-full cursor-row-resize items-center justify-center'
+              onMouseDown={handleVerticalDragStart}
+              onTouchStart={handleVerticalDragStart}
+            >
+              <div className='bg-base-content/50 h-1 w-10 rounded-full'></div>
+            </div>
+          )}
           <NotebookHeader
             isPinned={isNotebookPinned}
             isSearchBarVisible={isSearchBarVisible && notebookActiveTab === 'notes'}
@@ -308,6 +430,14 @@ const Notebook: React.FC = ({}) => {
         {notebookActiveTab === 'ai' ? (
           <div className='flex min-h-0 flex-1 flex-col'>
             <AIAssistant key={sideBarBookKey} bookKey={sideBarBookKey} />
+          </div>
+        ) : isNotesTabEmpty ? (
+          <div className='flex flex-grow items-center justify-center overflow-y-auto px-3'>
+            <EmptyState
+              Icon={RiQuillPenLine}
+              label={_('No Notes')}
+              hint={_('Capture an idea as you read')}
+            />
           </div>
         ) : (
           <div className='flex-grow overflow-y-auto px-3'>
@@ -373,25 +503,13 @@ const Notebook: React.FC = ({}) => {
               ))}
             </ul>
             <div dir='ltr'>
-              {(notebookNewAnnotation || filteredAnnotationNotes.length > 0) && (
-                <p className='content font-size-base'>
-                  {_('Notes')}
-                  {isSearchBarVisible && searchResults && filteredAnnotationNotes.length > 0 && (
-                    <span className='font-size-xs ml-2 text-gray-500'>
-                      ({filteredAnnotationNotes.length})
-                    </span>
-                  )}
-                </p>
+              {(notebookNewAnnotation || notebookEditAnnotation) && !isSearchBarVisible && (
+                <p className='content font-size-base'>{_('Notes')}</p>
               )}
             </div>
             {(notebookNewAnnotation || notebookEditAnnotation) && !isSearchBarVisible && (
               <NoteEditor onSave={handleSaveNote} onEdit={(item) => handleEditNote(item, false)} />
             )}
-            <ul>
-              {filteredAnnotationNotes.map((item, index) => (
-                <BooknoteItem key={`${index}-${item.cfi}`} bookKey={sideBarBookKey} item={item} />
-              ))}
-            </ul>
           </div>
         )}
         <div

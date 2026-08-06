@@ -21,6 +21,7 @@ export interface KoSyncProgress {
 export class KOSyncClient {
   private config: KOSyncSettings;
   private isLanServer: boolean;
+  private usesHttpAuth: boolean = false;
 
   constructor(config: KOSyncSettings) {
     this.config = config;
@@ -39,48 +40,74 @@ export class KOSyncClient {
   ): Promise<Response> {
     const { method = 'GET', body, headers: additionalHeaders, useAuth = true } = options;
 
-    const headers = new Headers(additionalHeaders || {});
-    if (useAuth) {
-      headers.set('X-Auth-User', this.config.username);
-      headers.set('X-Auth-Key', this.config.userkey);
-    }
-
-    if (this.isLanServer || isTauriAppPlatform()) {
-      const fetch = isTauriAppPlatform() ? tauriFetch : window.fetch;
-      const directUrl = `${this.config.serverUrl}${endpoint}`;
-
-      return fetch(directUrl, {
-        method,
-        headers: {
-          accept: 'application/vnd.koreader.v1+json',
-          ...(method === 'GET' ? {} : { 'Content-Type': 'application/json' }),
-          ...Object.fromEntries(headers.entries()),
-        },
-        body,
-        danger: {
-          acceptInvalidCerts: true,
-          acceptInvalidHostnames: true,
-        },
-      });
-    }
-
-    const proxyUrl = `${getAPIBaseUrl()}/kosync`;
-
-    const proxyBody: KoSyncProxyPayload = {
-      serverUrl: this.config.serverUrl,
-      endpoint,
-      method,
-      headers: Object.fromEntries(headers.entries()),
-      body: body ? JSON.parse(body as string) : undefined,
+    const buildHeaders = (): Headers => {
+      const headers = new Headers(additionalHeaders || {});
+      if (useAuth) {
+        if (this.usesHttpAuth && this.config.password) {
+          const credentials = btoa(`${this.config.username}:${this.config.password}`);
+          headers.set('Authorization', `Basic ${credentials}`);
+        } else {
+          headers.set('X-Auth-User', this.config.username);
+          headers.set('X-Auth-Key', this.config.userkey);
+        }
+      }
+      return headers;
     };
 
-    return fetch(proxyUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(proxyBody),
-    });
+    const attempt = async (): Promise<Response> => {
+      const headers = buildHeaders();
+
+      if (this.isLanServer || isTauriAppPlatform()) {
+        const fetch = isTauriAppPlatform() ? tauriFetch : window.fetch;
+        const directUrl = `${this.config.serverUrl}${endpoint}`;
+
+        return await fetch(directUrl, {
+          method,
+          headers: {
+            accept: 'application/vnd.koreader.v1+json',
+            ...(method === 'GET' ? {} : { 'Content-Type': 'application/json' }),
+            ...Object.fromEntries(headers.entries()),
+          },
+          body,
+          danger: {
+            acceptInvalidCerts: true,
+            acceptInvalidHostnames: true,
+          },
+        });
+      }
+
+      const proxyUrl = `${getAPIBaseUrl()}/kosync`;
+      const proxyBody: KoSyncProxyPayload = {
+        serverUrl: this.config.serverUrl,
+        endpoint,
+        method,
+        headers: Object.fromEntries(headers.entries()),
+        body: body ? JSON.parse(body as string) : undefined,
+      };
+
+      return await fetch(proxyUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(proxyBody),
+      });
+    };
+
+    let response = await attempt();
+    // some versions of CWA return status code 400 for auth failure, so check for both.
+    if (response.status === 401 || response.status === 400) {
+      // traditional auth failed; attempt one more time with HTTP auth
+      this.usesHttpAuth = true;
+
+      response = await attempt();
+      if (!response.ok) {
+        // this one failed too, revert to traditional auth
+        this.usesHttpAuth = false;
+      }
+    }
+
+    return response;
   }
 
   /**
@@ -98,13 +125,17 @@ export class KOSyncClient {
     try {
       const authResponse = await this.request('/users/auth', {
         method: 'GET',
-        headers: {
-          'X-Auth-User': username,
-          'X-Auth-Key': userkey,
-        },
+        useAuth: true,
       });
 
       if (authResponse.ok) {
+        // A wrong Server URL can land on the host's web UI, which answers 200
+        // with an HTML page. Only treat the response as a successful login when
+        // it's an actual KOReader Sync JSON response, otherwise the user is
+        // silently "connected" to an endpoint that can never sync.
+        if (!(await this.isKoSyncJsonResponse(authResponse))) {
+          return { success: false, message: 'Not a KOReader Sync server. Check the Server URL.' };
+        }
         return { success: true, message: 'Login successful.' };
       }
 
@@ -116,6 +147,9 @@ export class KOSyncClient {
         });
 
         if (registerResponse.ok) {
+          if (!(await this.isKoSyncJsonResponse(registerResponse))) {
+            return { success: false, message: 'Not a KOReader Sync server. Check the Server URL.' };
+          }
           return { success: true, message: 'Registration successful.' };
         }
 
@@ -158,8 +192,18 @@ export class KOSyncClient {
         return null;
       }
 
-      const data = await response.json();
-      return data.document ? data : null;
+      const data: KoSyncProgress = await response.json();
+      if (!data || typeof data !== 'object') return null;
+      // Key validity on an actual position, not on `document`: KOSync-compatible
+      // servers don't all echo the document hash back on GET (koreader-sync only
+      // returns progress/percentage/device/device_id/timestamp), and dropping
+      // those replies left the reader on its stale local position — which it
+      // then pushed back over the newer remote one.
+      const hasPosition =
+        (typeof data.progress === 'string' && data.progress.length > 0) ||
+        (typeof data.percentage === 'number' && Number.isFinite(data.percentage));
+      if (!hasPosition) return null;
+      return { ...data, document: data.document || documentHash };
     } catch (e) {
       console.error('KOSync getProgress failed', e);
       return null;
@@ -204,6 +248,17 @@ export class KOSyncClient {
       console.error('KOSync updateProgress failed', e);
       return false;
     }
+  }
+
+  /**
+   * A genuine KOReader Sync server replies with a JSON object (e.g.
+   * `{ "authorized": "OK" }`). A misconfigured Server URL that hits a static
+   * web UI returns an HTML page instead, which fails JSON parsing — use that to
+   * tell the two apart.
+   */
+  private async isKoSyncJsonResponse(response: Response): Promise<boolean> {
+    const data = await response.json().catch(() => null);
+    return typeof data === 'object' && data !== null;
   }
 
   getDocumentDigest(book: Book): string {

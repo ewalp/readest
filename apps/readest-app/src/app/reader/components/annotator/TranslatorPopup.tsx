@@ -151,7 +151,7 @@ const TranslatorPopup: React.FC<TranslatorPopupProps> = ({
         setTranslation(results.join('\n\n'));
       } catch (err) {
         console.error(err);
-        setError('获取拼音失败，请稍后重试。');
+        setError('获取拼音/字典失败，请稍后重试。');
       } finally {
         setLoading(false);
       }
@@ -168,39 +168,38 @@ const TranslatorPopup: React.FC<TranslatorPopupProps> = ({
         minHeight={popupHeight}
         maxHeight={720}
         position={position}
-        className='not-eink:text-white grid h-full select-text grid-rows-[auto,auto,1fr] bg-gray-600'
-        triangleClassName='text-gray-600'
+        className='not-eink:text-white grid h-full select-text grid-rows-[auto,auto,1fr,auto] bg-gray-600'
         onDismiss={onDismiss}
       >
         <div className='max-h-[160px] overflow-y-auto p-4 font-sans'>
           <div className='mb-2 flex items-center justify-between'>
             <h1 className='text-sm font-normal'>{_('Original Text')}</h1>
           </div>
-          <p className='not-eink:text-white/90 text-base'>{text}</p>
+          <p className='text-base'>{text}</p>
         </div>
 
-        <div className='mx-4 flex-shrink-0 border-t border-gray-500/30'></div>
+        <div className='mx-4 flex-shrink-0 border-t border-base-content/20'></div>
 
-        <div className='overflow-y-auto px-4 pb-8 pt-4 font-sans'>
+        <div className='overflow-y-auto p-4 font-sans'>
           <div className='mb-2 flex items-center justify-between'>
-            <h2 className='text-sm font-normal'>拼音</h2>
+            <h2 className='text-sm font-normal'>字典释义 / 拼音</h2>
           </div>
           {loading ? (
-            <p className='text-base italic text-gray-500'>{_('Loading...')}</p>
+            <p className='text-base-content/80 italic'>{_('Loading...')}</p>
           ) : (
             <div>
               {error ? (
                 <p className='text-base text-red-600'>{error}</p>
               ) : (
                 <p className='not-eink:text-white/90 whitespace-pre-wrap text-base'>
-                  {translation || '无拼音数据。'}
+                  {translation || '无拼音/字典数据。'}
                 </p>
               )}
             </div>
           )}
         </div>
-        <div className='absolute bottom-0 flex h-8 w-full items-center justify-between px-4'>
-          <div className='line-clamp-1 text-xs opacity-60'>Powered by Baidu Hanyu</div>
+        <div className='flex shrink-0 items-center justify-between gap-2 rounded-b-lg px-4 py-2 text-xs opacity-60'>
+          <div>Powered by Baidu Hanyu</div>
         </div>
       </Popup>
     </div>

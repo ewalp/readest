@@ -34,10 +34,15 @@ export const DEFAULT_AI_SETTINGS: AISettings = {
   deepseekModel: 'deepseek-v4-pro',
   deepseekEmbeddingModel: 'deepseek-v4-flash',
 
+  openrouterBaseUrl: 'https://openrouter.ai/api/v1',
+  openrouterModel: '',
+  openrouterEmbeddingModel: '',
+
   spoilerProtection: true,
   maxContextChunks: 10,
   indexingMode: 'on-demand',
 
   fontSize: 14,
   useBookTheme: true,
+  reedy: { enabled: false },
 };

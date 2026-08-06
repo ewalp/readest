@@ -2,7 +2,6 @@ import clsx from 'clsx';
 import React, { useEffect, useState } from 'react';
 
 import { BookDoc } from '@/libs/document';
-import { useThemeStore } from '@/store/themeStore';
 import { useReaderStore } from '@/store/readerStore';
 import { useSidebarStore } from '@/store/sidebarStore';
 import { useBookDataStore } from '@/store/bookDataStore';
@@ -19,9 +18,8 @@ const SidebarContent: React.FC<{
   bookDoc: BookDoc;
   sideBarBookKey: string;
 }> = ({ bookDoc, sideBarBookKey }) => {
-  const { safeAreaInsets } = useThemeStore();
   const { setHoveredBookKey } = useReaderStore();
-  const { setSideBarVisible } = useSidebarStore();
+  const { setSideBarVisible, setSearchBarVisible } = useSidebarStore();
   const { getConfig, setConfig } = useBookDataStore();
   const { settings } = useSettingsStore();
   const config = getConfig(sideBarBookKey);
@@ -47,13 +45,19 @@ const SidebarContent: React.FC<{
   }, [aiEnabled, activeTab, targetTab]);
 
   const handleTabChange = (tab: string) => {
-    setFade(true);
-    const timeout = setTimeout(() => {
-      if (activeTab === tab && isMobile) {
+    if (activeTab === tab) {
+      if (isMobile) {
         setHoveredBookKey(sideBarBookKey);
         setSideBarVisible(false);
-        return;
       }
+      return;
+    }
+
+    // The header search icon is contextual (annotation search vs in-book
+    // search), so an open search bar never survives a tab switch.
+    setSearchBarVisible(false);
+    setFade(true);
+    const timeout = setTimeout(() => {
       setTargetTab(tab);
       setFade(false);
       setConfig(sideBarBookKey!, config);
@@ -79,6 +83,10 @@ const SidebarContent: React.FC<{
           <OverlayScrollbarsComponent
             className='min-h-0 flex-1'
             options={{
+              // The tab content is width-bound; x stays hidden so oversized
+              // touch-target halos (e.g. the toolbar's dropdown toggle) can't
+              // turn into a horizontal scrollbar.
+              overflow: { x: 'hidden' },
               scrollbars: { autoHide: 'scroll', clickScroll: true },
               showNativeOverlaidScrollbars: false,
             }}
@@ -94,7 +102,7 @@ const SidebarContent: React.FC<{
               )}
             >
               {targetTab === 'toc' && bookDoc.toc && (
-                <TOCView toc={bookDoc.toc} sections={bookDoc.sections} bookKey={sideBarBookKey} />
+                <TOCView toc={bookDoc.toc} bookKey={sideBarBookKey} />
               )}
               {targetTab === 'annotations' && (
                 <BooknoteView type='annotation' toc={bookDoc.toc ?? []} bookKey={sideBarBookKey} />
@@ -108,9 +116,11 @@ const SidebarContent: React.FC<{
       </div>
       <div
         className='flex-shrink-0'
-        style={{
-          paddingBottom: `${(safeAreaInsets?.bottom || 0) / 2}px`,
-        }}
+        style={
+          {
+            // paddingBottom: 'calc(env(safe-area-inset-bottom, 0px) / 2)',
+          }
+        }
       >
         <TabNavigation activeTab={activeTab} onTabChange={handleTabChange} />
       </div>

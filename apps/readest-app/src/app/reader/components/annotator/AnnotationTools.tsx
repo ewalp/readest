@@ -1,11 +1,12 @@
 import { IconType } from 'react-icons';
 import { FiSearch } from 'react-icons/fi';
 import { FiCopy } from 'react-icons/fi';
+import { FiLink } from 'react-icons/fi';
+import { FiShare } from 'react-icons/fi';
 import { PiHighlighterFill } from 'react-icons/pi';
-import { FaWikipediaW } from 'react-icons/fa';
+import { LuBookA } from 'react-icons/lu';
 import { BsPencilSquare } from 'react-icons/bs';
 import { BsTranslate } from 'react-icons/bs';
-import { TbHexagonLetterD } from 'react-icons/tb';
 import { FaHeadphones } from 'react-icons/fa6';
 import { IoIosBuild } from 'react-icons/io';
 import { AnnotationToolType } from '@/types/annotator';
@@ -36,7 +37,19 @@ function createAnnotationToolButtons<T extends AnnotationToolType>(
 }
 
 export const annotationToolButtons = createAnnotationToolButtons([
-  { type: 'copy', label: _('Copy'), tooltip: _('Copy text after selection'), Icon: FiCopy },
+  {
+    type: 'copy',
+    label: _('Copy'),
+    tooltip: _('Copy text after selection'),
+    Icon: FiCopy,
+    quickAction: true,
+  },
+  {
+    type: 'copylink',
+    label: _('Copy Link'),
+    tooltip: _('Copy link to text after selection'),
+    Icon: FiLink,
+  },
   {
     type: 'highlight',
     label: _('Highlight'),
@@ -61,14 +74,7 @@ export const annotationToolButtons = createAnnotationToolButtons([
     type: 'dictionary',
     label: _('Dictionary'),
     tooltip: _('Look up text in dictionary after selection'),
-    Icon: TbHexagonLetterD,
-    quickAction: true,
-  },
-  {
-    type: 'wikipedia',
-    label: _('Wikipedia'),
-    tooltip: _('Look up text in Wikipedia after selection'),
-    Icon: FaWikipediaW,
+    Icon: LuBookA,
     quickAction: true,
   },
   {
@@ -90,6 +96,13 @@ export const annotationToolButtons = createAnnotationToolButtons([
     label: _('Proofread'),
     tooltip: _('Proofread text after selection'),
     Icon: IoIosBuild,
+  },
+  {
+    type: 'share',
+    label: _('Share'),
+    tooltip: _('Share text after selection'),
+    Icon: FiShare,
+    quickAction: true,
   },
 ]);
 

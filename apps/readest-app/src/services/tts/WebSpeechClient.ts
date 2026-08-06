@@ -1,5 +1,6 @@
 import { getUserLocale } from '@/utils/misc';
-import { TTSClient, TTSMessageEvent } from './TTSClient';
+import { isSameLang } from '@/utils/lang';
+import { TTSCapabilities, TTSClient, TTSMessageEvent } from './TTSClient';
 import { parseSSMLMarks } from '@/utils/ssml';
 import { TTSGranularity, TTSMark, TTSVoice, TTSVoicesGroup } from './types';
 import { WEB_SPEECH_BLACKLISTED_VOICES } from './TTSData';
@@ -75,6 +76,11 @@ type WebSpeechVoice = SpeechSynthesisVoice & {
   id: string;
 };
 
+// How long to wait for 'voiceschanged' before giving up on the voice list.
+// Chrome populates it asynchronously on first call, so some wait is required;
+// a platform with no voices at all never fires the event.
+const WEB_SPEECH_VOICES_TIMEOUT_MS = 2000;
+
 export class WebSpeechClient implements TTSClient {
   name = 'web-speech';
   initialized = false;
@@ -99,7 +105,11 @@ export class WebSpeechClient implements TTSClient {
       return this.initialized;
     }
     await new Promise<void>((resolve) => {
+      let settled = false;
       const populateVoices = () => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
         this.#voices = this.#synth.getVoices().map((voice) => {
           const webSpeechVoice = voice as WebSpeechVoice;
           webSpeechVoice.id = voice.voiceURI || voice.name;
@@ -109,13 +119,24 @@ export class WebSpeechClient implements TTSClient {
         resolve();
       };
 
+      // A platform with no speech voices installed (a bare Linux desktop with
+      // no speech-dispatcher, headless Chromium) reports an empty voice list
+      // and never fires 'voiceschanged'. Waiting forever wedges the whole of
+      // TTSController.init(), which takes every other engine down with it —
+      // including recorded narration, which needs no system voice at all.
+      const timer = setTimeout(() => {
+        if (settled) return;
+        console.warn('[TTS] no Web Speech voices reported; continuing without them');
+        populateVoices();
+      }, WEB_SPEECH_VOICES_TIMEOUT_MS);
+
       if (this.#synth.getVoices().length > 0) {
         populateVoices();
       } else if (this.#synth.onvoiceschanged !== undefined) {
         this.#synth.onvoiceschanged = populateVoices;
       } else {
         console.warn('Voiceschanged event not supported.');
-        resolve();
+        populateVoices();
       }
     });
     this.initialized = true;
@@ -228,12 +249,11 @@ export class WebSpeechClient implements TTSClient {
     const isNotBlacklisted = (voice: SpeechSynthesisVoice) => {
       return WEB_SPEECH_BLACKLISTED_VOICES.some((name) => voice.name.includes(name)) === false;
     };
+    // Match by primary language so the voice set stays the same across a book
+    // whose sections mix region variants (e.g. en-US front matter and en-GB
+    // body text); the requested locale's voices sort first. See #4033.
     const filteredVoices = this.#voices
-      .filter(
-        (voice) =>
-          voice.lang.startsWith(locale) ||
-          (lang === 'en' && ['en-US', 'en-GB'].includes(voice.lang)),
-      )
+      .filter((voice) => isSameLang(voice.lang, lang))
       .filter((voice) => isValidVoice(voice.voiceURI || ''))
       .filter(isNotBlacklisted);
     const seenIds = new Set<string>();
@@ -260,10 +280,16 @@ export class WebSpeechClient implements TTSClient {
     const voicesGroup: TTSVoicesGroup = {
       id: 'web-speech-api',
       name: 'Web TTS',
-      voices: voices.sort(TTSUtils.sortVoicesFunc),
+      voices: voices.sort(TTSUtils.sortVoicesPreferLocaleFunc(locale)),
       disabled: !this.initialized || voices.length === 0,
     };
     return [voicesGroup];
+  }
+
+  getCapabilities(): TTSCapabilities {
+    // Direct-speak engine: the OS renders the audio, so there is no media
+    // clock, no word boundaries, and no gap or live-rate control.
+    return { wordBoundaries: false, mediaClock: false, gapControl: false, liveRateChange: false };
   }
 
   getGranularities(): TTSGranularity[] {

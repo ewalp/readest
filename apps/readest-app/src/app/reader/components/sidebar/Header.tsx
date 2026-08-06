@@ -1,6 +1,5 @@
 import clsx from 'clsx';
-import React from 'react';
-import { GiBookshelf } from 'react-icons/gi';
+import React, { useRef } from 'react';
 import { FiSearch } from 'react-icons/fi';
 import { MdOutlineMenu, MdOutlinePushPin, MdPushPin } from 'react-icons/md';
 import { MdArrowBackIosNew } from 'react-icons/md';
@@ -9,23 +8,26 @@ import { useTrafficLight } from '@/hooks/useTrafficLight';
 import { useResponsiveSize } from '@/hooks/useResponsiveSize';
 import Dropdown from '@/components/Dropdown';
 import BookMenu from './BookMenu';
+import SidebarToggler from '../SidebarToggler';
 
 const SidebarHeader: React.FC<{
+  bookKey: string;
   isPinned: boolean;
   isSearchBarVisible: boolean;
-  onGoToLibrary: () => void;
   onClose: () => void;
   onTogglePin: () => void;
   onToggleSearchBar: () => void;
-}> = ({ isPinned, isSearchBarVisible, onGoToLibrary, onClose, onTogglePin, onToggleSearchBar }) => {
+}> = ({ bookKey, isPinned, isSearchBarVisible, onClose, onTogglePin, onToggleSearchBar }) => {
   const _ = useTranslation();
-  const { isTrafficLightVisible } = useTrafficLight();
-  const iconSize14 = useResponsiveSize(14);
+  const headerRef = useRef<HTMLDivElement>(null);
+  const { isTrafficLightVisible } = useTrafficLight(headerRef);
+  const iconSize15 = useResponsiveSize(15);
   const iconSize18 = useResponsiveSize(18);
   const iconSize22 = useResponsiveSize(22);
 
   return (
     <div
+      ref={headerRef}
       className={clsx(
         'sidebar-header flex h-11 items-center justify-between pe-2',
         isTrafficLightVisible ? 'ps-1.5 sm:ps-20' : 'ps-1.5',
@@ -40,13 +42,9 @@ const SidebarHeader: React.FC<{
         >
           <MdArrowBackIosNew size={iconSize22} />
         </button>
-        <button
-          title={_('Go to Library')}
-          className='btn btn-ghost hidden h-8 min-h-8 w-8 p-0 sm:flex'
-          onClick={onGoToLibrary}
-        >
-          <GiBookshelf className='fill-base-content' />
-        </button>
+        <div className='hidden sm:flex'>
+          <SidebarToggler bookKey={bookKey} />
+        </div>
       </div>
       <div className='flex min-w-24 max-w-32 items-center justify-between sm:size-[70%]'>
         <button
@@ -63,11 +61,12 @@ const SidebarHeader: React.FC<{
           label={_('Book Menu')}
           showTooltip={false}
           className={clsx(
-            window.innerWidth < 640 && 'dropdown-end',
-            'dropdown-bottom flex justify-center',
+            window.innerWidth < 640 ? 'dropdown-end' : 'dropdown-center',
+            'dropdown-bottom',
           )}
-          menuClassName={window.innerWidth < 640 ? 'no-triangle mt-1' : 'dropdown-center mt-3'}
+          menuClassName={clsx('no-triangle mt-1', window.innerWidth < 640 ? '' : '!relative')}
           buttonClassName='btn btn-ghost h-8 min-h-8 w-8 p-0'
+          containerClassName='h-8'
           toggleButton={<MdOutlineMenu className='fill-base-content' />}
         >
           <BookMenu />
@@ -81,7 +80,7 @@ const SidebarHeader: React.FC<{
               isPinned ? 'bg-base-300' : 'bg-base-300/65',
             )}
           >
-            {isPinned ? <MdPushPin size={iconSize14} /> : <MdOutlinePushPin size={iconSize14} />}
+            {isPinned ? <MdPushPin size={iconSize15} /> : <MdOutlinePushPin size={iconSize15} />}
           </button>
         </div>
       </div>

@@ -1,10 +1,13 @@
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import Image from 'next/image';
 import { useEnv } from '@/context/EnvContext';
 import { useTranslation } from '@/hooks/useTranslation';
+import { useSettingsStore } from '@/store/settingsStore';
 import { checkForAppUpdates, checkAppReleaseNotes } from '@/helpers/updater';
 import { parseWebViewInfo } from '@/utils/ua';
 import { getAppVersion } from '@/utils/version';
+import { writeTextToClipboard } from '@/utils/clipboard';
+import { eventDispatcher } from '@/utils/event';
 import SupportLinks from './SupportLinks';
 import LegalLinks from './LegalLinks';
 import Dialog from './Dialog';
@@ -25,6 +28,7 @@ type UpdateStatus = 'checking' | 'updating' | 'updated' | 'error';
 export const AboutWindow = () => {
   const _ = useTranslation();
   const { appService } = useEnv();
+  const { settings } = useSettingsStore();
   const [updateStatus, setUpdateStatus] = useState<UpdateStatus | null>(null);
   const [browserInfo, setBrowserInfo] = useState('');
   const [isOpen, setIsOpen] = useState(false);
@@ -52,7 +56,7 @@ export const AboutWindow = () => {
   const handleCheckUpdate = async () => {
     setUpdateStatus('checking');
     try {
-      const hasUpdate = await checkForAppUpdates(_, false);
+      const hasUpdate = await checkForAppUpdates(_, false, settings.updateChannel);
       if (hasUpdate) {
         handleClose();
       } else {
@@ -78,6 +82,21 @@ export const AboutWindow = () => {
     setUpdateStatus(null);
   };
 
+  const versionInfo = `${_('Version {{version}}', { version: getAppVersion() })} (${browserInfo})`;
+
+  // Mobile users can't select the version string to paste it into a bug
+  // report, so the label itself copies it.
+  const handleCopyVersion = async () => {
+    const copied = await writeTextToClipboard(versionInfo);
+    if (!copied) return;
+    eventDispatcher.dispatch('toast', {
+      type: 'info',
+      message: _('Copied to clipboard'),
+      className: 'whitespace-nowrap',
+      timeout: 2000,
+    });
+  };
+
   return (
     <Dialog
       id='about_window'
@@ -94,9 +113,14 @@ export const AboutWindow = () => {
             </div>
             <div className='flex select-text flex-col items-center'>
               <h2 className='mb-2 text-2xl font-bold'>Readest</h2>
-              <p className='text-neutral-content text-center text-sm'>
-                {_('Version {{version}}', { version: getAppVersion() })} {`(${browserInfo})`}
-              </p>
+              <button
+                type='button'
+                title={_('Copy')}
+                className='text-neutral-content text-center text-sm'
+                onClick={handleCopyVersion}
+              >
+                {versionInfo}
+              </button>
             </div>
             <div className='my-1 h-5'>
               {!updateStatus && (
@@ -121,7 +145,7 @@ export const AboutWindow = () => {
             </div>
           </div>
 
-          <hr className='border-base-300 my-12 w-full sm:my-4' />
+          <hr aria-hidden='true' className='border-base-300 my-12 w-full sm:my-4' />
 
           <div
             className='flex flex-1 flex-col items-center justify-start gap-2 px-4 text-center'

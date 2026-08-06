@@ -8,6 +8,11 @@
 
 # testing
 /coverage
+.test-sandbox-node/
+.vitest-attachments/
+
+# benchmarks — personal local perf history; share via PR/issue copy-paste
+bench/results.jsonl
 
 # next.js
 /.next/
@@ -48,11 +53,20 @@ tauri.*.conf.json
 *.tsbuildinfo
 next-env.d.ts
 
+# eslint
+.eslintcache
+
 #generated
 src-tauri/gen
 
+# local dev overrides (personal signing, etc.)
+src-tauri/tauri.*.local.json
+
 # vendor
 /public/vendor
+
+# docs
+docs/superpowers
 
 # Auto Generated PWA files
 /public/sw.js
@@ -60,3 +74,20 @@ src-tauri/gen
 /public/fallback-*.js
 /public/swe-worker-*.js
 
+/dist/
+
+.context/
+.claude/settings.local.json
+.claude/skills
+.claude/plans
+
+# Playwright web e2e
+/test-results/
+/playwright-report/
+/blob-report/
+/playwright/.cache/
+
+
+# Word Lens build-input corpora (ECDICT, WikDict, FrequencyWords, etc.) — large,
+# downloaded on demand by scripts/build-wordlens-data.mjs; cached locally, not committed.
+/data/wordlens/.sources/

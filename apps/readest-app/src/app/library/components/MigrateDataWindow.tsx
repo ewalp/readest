@@ -1,5 +1,5 @@
 import clsx from 'clsx';
-import React, { useEffect, useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   RiFolderOpenLine,
   RiCheckboxCircleFill,
@@ -17,7 +17,7 @@ import { FileItem } from '@/types/system';
 import { getDirPath } from '@/utils/path';
 import { formatBytes } from '@/utils/book';
 import { getOSPlatform } from '@/utils/misc';
-import { getExternalSDCardPath } from '@/utils/bridge';
+import { getExternalSDCardPath, selectDirectory } from '@/utils/bridge';
 import { FILE_REVEAL_LABELS, FILE_REVEAL_PLATFORMS } from '@/utils/os';
 import { requestStoragePermission } from '@/utils/permission';
 import Dialog from '@/components/Dialog';
@@ -119,8 +119,7 @@ export const MigrateDataWindow = () => {
         }
         const localDocumentDir = await documentDir();
         setAndroidNewDirs([
-          // For Google Play version we won't request permission to access root of /sdcard
-          ...(appService?.distChannel === 'playstore' ? [] : sdcardDirs),
+          ...sdcardDirs,
           { path: localDocumentDir, label: '/sdcard/APPDATA/Documents' },
         ]);
       }
@@ -169,6 +168,22 @@ export const MigrateDataWindow = () => {
     }
   };
 
+  // The preset shortcuts only cover the well-known shared-storage folders. Open
+  // the system folder picker so any folder can become the data location (#2862);
+  // it hands back an absolute path that All Files Access makes writable.
+  const handleBrowseNewDir = async () => {
+    try {
+      const response = await selectDirectory();
+      if (response.path) {
+        await handleSelectedNewDir(response.path);
+      }
+    } catch (error) {
+      console.error('Error selecting directory:', error);
+      setErrorMessage(_('Failed to select directory'));
+      setMigrationStatus('error');
+    }
+  };
+
   const handleStartMigration = async () => {
     if (!appService || !currentDataDir || !newDataDir || !filesToMigrate.length) return;
 
@@ -192,7 +207,7 @@ export const MigrateDataWindow = () => {
 
         const srcPath = await join(currentDataDir, file.path);
         const destPath = await join(newDataDir, file.path);
-        await appService.copyFile(srcPath, destPath, 'None');
+        await appService.copyFile(srcPath, 'None', destPath, 'None');
       }
 
       // Verify all files copied
@@ -327,7 +342,7 @@ export const MigrateDataWindow = () => {
               >
                 <div
                   className={clsx(
-                    'folder-menu dropdown-content dropdown-center no-triangle',
+                    'folder-menu dropdown-content no-triangle left-0',
                     'border-base-300 !bg-base-200 z-20 mt-1 max-w-[90vw] shadow-2xl',
                   )}
                 >
@@ -340,6 +355,7 @@ export const MigrateDataWindow = () => {
                       onClick={() => handleSelectedNewDir(dir.path)}
                     />
                   ))}
+                  <MenuItem transient label={_('Choose a folder')} onClick={handleBrowseNewDir} />
                 </div>
               </Dropdown>
             ) : (
@@ -448,7 +464,7 @@ export const MigrateDataWindow = () => {
           <div className='flex gap-3 pt-2'>
             {migrationStatus === 'completed' ? (
               <>
-                <button className='btn btn-outline flex-1' onClick={handleClose}>
+                <button className='btn btn-ghost flex-1' onClick={handleClose}>
                   {_('Close')}
                 </button>
                 <button className='btn btn-primary flex-1' onClick={handleRestartApp}>
@@ -458,7 +474,7 @@ export const MigrateDataWindow = () => {
             ) : (
               <>
                 <button
-                  className='btn btn-outline flex-1'
+                  className='btn btn-ghost flex-1'
                   onClick={handleClose}
                   disabled={migrationStatus === 'migrating'}
                 >

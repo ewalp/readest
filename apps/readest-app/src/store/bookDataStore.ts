@@ -5,7 +5,57 @@ import { EnvConfigType } from '@/services/environment';
 import { BookDoc } from '@/libs/document';
 import { useLibraryStore } from './libraryStore';
 
-interface BookData {
+// Throttle library.json writes triggered by per-book saveConfig.
+//
+// Why: `saveConfig` ran two large fs.writeFile IPC calls *every* invocation —
+// one for the per-book config.json and one for the WHOLE library.json (because
+// saveLibraryBooks writes a backup + the file itself). For a user with N
+// books in their shelf, that's `2 * JSON.stringify(N entries)` of work + 2
+// Tauri IPC round-trips per save. With auto-save firing once per second of
+// reading (useProgressAutoSave), Chrome DevTools' Bottom-Up profile shows
+// `processIpcMessage` chewing ~25% of main-thread time during a reading
+// session — directly responsible for the swipe jank the user is reporting
+// (touchmove gets queued behind IPC processing).
+//
+// The library array itself is updated immutably via setLibrary on every save
+// (see `setLibrary(newLibrary)` below) so in-memory state and zustand
+// subscribers see the change immediately. Disk persistence can be deferred:
+// progress is also stored in each book's own config.json (which we still
+// write every time), so even if the app dies between throttle ticks the
+// shelf will reconstruct correct progress from those per-book files on
+// next launch.
+//
+// LIBRARY_SAVE_THROTTLE_MS=30s: long enough to collapse a swipe burst into a
+// single IPC, short enough that a user who closes the book within half a
+// minute still sees the shelf update without a follow-up flush. Force-flush
+// happens via flushPendingLibrarySave() on hook unmount + window blur.
+const LIBRARY_SAVE_THROTTLE_MS = 30_000;
+let librarySaveTimeoutId: ReturnType<typeof setTimeout> | null = null;
+let librarySaveAppService: { saveLibraryBooks: (books: Book[]) => Promise<void> } | null = null;
+const scheduleLibrarySave = (appService: {
+  saveLibraryBooks: (books: Book[]) => Promise<void>;
+}) => {
+  librarySaveAppService = appService;
+  if (librarySaveTimeoutId != null) return;
+  librarySaveTimeoutId = setTimeout(() => {
+    librarySaveTimeoutId = null;
+    const svc = librarySaveAppService;
+    if (!svc) return;
+    const { library } = useLibraryStore.getState();
+    svc.saveLibraryBooks(library).catch((err) => {
+      console.warn('Throttled library save failed:', err);
+    });
+  }, LIBRARY_SAVE_THROTTLE_MS);
+};
+export const flushPendingLibrarySave = async () => {
+  if (librarySaveTimeoutId == null || !librarySaveAppService) return;
+  clearTimeout(librarySaveTimeoutId);
+  librarySaveTimeoutId = null;
+  const { library } = useLibraryStore.getState();
+  await librarySaveAppService.saveLibraryBooks(library);
+};
+
+export interface BookData {
   /* Persistent data shared with different views of the same book */
   id: string;
   book: Book | null;
@@ -24,11 +74,27 @@ interface BookDataState {
     bookKey: string,
     config: BookConfig,
     settings: SystemSettings,
-  ) => void;
+  ) => Promise<void>;
   updateBooknotes: (key: string, booknotes: BookNote[]) => BookConfig | undefined;
   getBookData: (keyOrId: string) => BookData | null;
   clearBookData: (keyOrId: string) => void;
 }
+
+/**
+ * Drop booknotes that carry no CFI. Such a note has no anchor in the book: it
+ * can't be rendered, navigated to, or ordered against anything. Worse, it is
+ * actively dangerous — `CFI.compare` dereferences both of its arguments, so a
+ * null/undefined cfi reaching a sort comparator or `findNearestCfi` throws
+ * during render and drops the whole app to the error boundary.
+ *
+ * `BookNote.cfi` is typed `string`, but that isn't enforced at runtime for data
+ * we didn't create: file sync (`services/sync/file/wire.ts`), backup restore,
+ * and the Foliate importer all parse foreign JSON straight into booknotes.
+ * Every write to `config.booknotes` funnels through this store, so discard them
+ * here rather than defending each of the many CFI comparison sites.
+ */
+const discardUnanchoredBooknotes = (booknotes: BookNote[]): BookNote[] =>
+  booknotes.filter((booknote) => booknote.cfi);
 
 export const useBookDataStore = create<BookDataState>((set, get) => ({
   booksData: {},
@@ -54,18 +120,20 @@ export const useBookDataStore = create<BookDataState>((set, get) => ({
   setConfig: (key: string, partialConfig: Partial<BookConfig>) => {
     set((state: BookDataState) => {
       const id = key.split('-')[0]!;
-      const config = (state.booksData[id]?.config || null) as BookConfig;
+      const config = state.booksData[id]?.config;
       if (!config) {
         console.warn('No config found for book', id);
         return state;
       }
-      Object.assign(config, partialConfig);
+      const update = partialConfig.booknotes
+        ? { ...partialConfig, booknotes: discardUnanchoredBooknotes(partialConfig.booknotes) }
+        : partialConfig;
       return {
         booksData: {
           ...state.booksData,
           [id]: {
             ...state.booksData[id]!,
-            config,
+            config: { ...config, ...update },
           },
         },
       };
@@ -78,18 +146,39 @@ export const useBookDataStore = create<BookDataState>((set, get) => ({
     settings: SystemSettings,
   ) => {
     const appService = await envConfig.getAppService();
-    const { library, setLibrary } = useLibraryStore.getState();
-    const bookIndex = library.findIndex((b) => b.hash === bookKey.split('-')[0]);
-    if (bookIndex == -1) return;
-    const book = library.splice(bookIndex, 1)[0]!;
-    book.progress = config.progress;
-    book.updatedAt = Date.now();
-    book.downloadedAt = book.downloadedAt || Date.now();
-    library.unshift(book);
-    setLibrary([...library]);
-    config.updatedAt = Date.now();
-    await appService.saveBookConfig(book, config, settings);
-    await appService.saveLibraryBooks(library);
+    const { library, hashIndex, setLibrary } = useLibraryStore.getState();
+    const hash = bookKey.split('-')[0]!;
+    const idx = hashIndex.get(hash);
+    if (idx === undefined) return;
+
+    // Immutably move the book to the front of the library with updated
+    // progress and timestamps. We do NOT mutate the existing book object or
+    // the existing library array — Zustand subscribers see fresh references
+    // and the visibleLibrary cache stays in sync via setLibrary's full update.
+    const now = Date.now();
+    const original = library[idx]!;
+    const updatedBook: Book = {
+      ...original,
+      progress: config.progress,
+      updatedAt: now,
+      downloadedAt: original.downloadedAt || now,
+    };
+    const newLibrary = [updatedBook, ...library.slice(0, idx), ...library.slice(idx + 1)];
+    setLibrary(newLibrary);
+
+    // Refresh updatedAt immutably via the store rather than mutating the
+    // caller-provided object. This notifies Zustand subscribers and works
+    // regardless of whether the caller passed the shared store config.
+    get().setConfig(bookKey, { updatedAt: now });
+    const configToSave = { ...config, updatedAt: now };
+    // Per-book config: still write eagerly — it's small (one book's
+    // settings + booknotes) and is the source of truth used by sync to
+    // reconstruct the shelf if library.json is missing or stale.
+    await appService.saveBookConfig(updatedBook, configToSave, settings);
+    // Library JSON write: throttled (see scheduleLibrarySave docs) so a
+    // burst of saveConfig calls during reading doesn't fire IPC on every
+    // page turn.
+    scheduleLibrarySave(appService);
   },
   updateBooknotes: (key: string, booknotes: BookNote[]) => {
     let updatedConfig: BookConfig | undefined;
@@ -98,7 +187,12 @@ export const useBookDataStore = create<BookDataState>((set, get) => ({
       const book = state.booksData[id];
       if (!book) return state;
       const dedupedBooknotes = Array.from(
-        new Map(booknotes.map((item) => [`${item.id}-${item.type}-${item.cfi}`, item])).values(),
+        new Map(
+          discardUnanchoredBooknotes(booknotes).map((item) => [
+            `${item.id}-${item.type}-${item.cfi}`,
+            item,
+          ]),
+        ).values(),
       );
       updatedConfig = {
         ...book.config,

@@ -196,7 +196,9 @@ export async function indexBook(
           ? settings.openAiEmbeddingModel || 'text-embedding-3-small'
           : settings.provider === 'deepseek'
             ? settings.deepseekEmbeddingModel || 'deepseek-v4-flash'
-            : settings.aiGatewayEmbeddingModel || 'text-embedding-3-small';
+            : settings.provider === 'openrouter'
+              ? settings.openrouterEmbeddingModel || 'text-embedding-3-small'
+              : settings.aiGatewayEmbeddingModel || 'text-embedding-3-small';
     aiLogger.embedding.start(embeddingModelName, allChunks.length);
 
     const texts = allChunks.map((c) => c.text);

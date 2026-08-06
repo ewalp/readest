@@ -6,16 +6,28 @@ interface LinkProps extends React.AnchorHTMLAttributes<HTMLAnchorElement> {
   title?: string;
 }
 
+const isTauri = isTauriAppPlatform();
+
 const Link: React.FC<LinkProps> = ({ href, children, ...props }) => {
   const handleClick = async (e: React.MouseEvent<HTMLAnchorElement>) => {
-    if (isTauriAppPlatform()) {
+    if (isTauri) {
       e.preventDefault();
-      await openUrl(href);
+      try {
+        await openUrl(href);
+      } catch (error) {
+        console.info('Failed to open external link:', error);
+      }
     }
   };
 
   return (
-    <a href={href} target='_blank' rel='noopener noreferrer' onClick={handleClick} {...props}>
+    <a
+      href={href}
+      target={isTauri ? undefined : '_blank'}
+      rel='noopener noreferrer'
+      onClick={handleClick}
+      {...props}
+    >
       {children}
     </a>
   );

@@ -1,7 +1,13 @@
-import { BookMetadata, EXTS } from '@/libs/document';
-import { Book, BookConfig, BookProgress, WritingMode } from '@/types/book';
+import { BookMetadata, CalibreCustomColumn, EXTS } from '@/libs/document';
+import {
+  Book,
+  BOOK_CONFIG_SCHEMA_VERSION,
+  BookConfig,
+  BookProgress,
+  WritingMode,
+} from '@/types/book';
 import { SUPPORTED_LANGS } from '@/services/constants';
-import { getUserLang, makeSafeFilename } from './misc';
+import { getLocale, getUserLang, makeSafeFilename } from './misc';
 import { getStorageType } from './storage';
 import { getDirFromLanguage } from './rtl';
 import { code6392to6391, isValidLang, normalizedLangCode } from './lang';
@@ -35,11 +41,15 @@ export const getCoverFilename = (book: Book) => {
 export const getConfigFilename = (book: Book) => {
   return `${book.hash}/config.json`;
 };
+export const getBookNavFilename = (book: Book) => {
+  return `${book.hash}/nav.json`;
+};
 export const isBookFile = (filename: string) => {
   return Object.values(EXTS).includes(filename.split('.').pop()!);
 };
 
 export const INIT_BOOK_CONFIG: BookConfig = {
+  schemaVersion: BOOK_CONFIG_SCHEMA_VERSION,
   updatedAt: 0,
 };
 
@@ -54,6 +64,12 @@ export interface Identifier {
 
 export interface Contributor {
   name: LanguageMap;
+}
+
+export interface Collection {
+  name: string;
+  position?: string;
+  total?: string;
 }
 
 const formatLanguageMap = (x: string | LanguageMap, defaultLang = false): string => {
@@ -97,7 +113,15 @@ export const flattenContributors = (
       : formatLanguageMap(contributors?.name);
 };
 
-// prettier-ignore
+export const getContributorNames = (
+  contributors: string | string[] | Contributor | Contributor[] | undefined,
+): string[] => {
+  if (!contributors) return [];
+  const values = Array.isArray(contributors) ? contributors : [contributors];
+  return [...new Set(values.map((value) => flattenContributors(value).trim()).filter(Boolean))];
+};
+
+// biome-ignore format: keep the language codes compact on a single line
 const LASTNAME_AUTHOR_SORT_LANGS = [ 'ar', 'bo', 'de', 'en', 'es', 'fr', 'hi', 'it', 'nl', 'pl', 'pt', 'ru', 'th', 'tr', 'uk' ];
 
 const formatAuthorName = (name: string, lastNameFirst: boolean) => {
@@ -142,6 +166,14 @@ export const formatDescription = (description?: string | LanguageMap) => {
     .trim();
 };
 
+export const formatSeries = (series?: string, seriesIndex?: number) => {
+  const name = series?.trim();
+  if (!name) return '';
+  const hasIndex =
+    typeof seriesIndex === 'number' && Number.isFinite(seriesIndex) && seriesIndex > 0;
+  return hasIndex ? `${name} #${seriesIndex}` : name;
+};
+
 export const formatPublisher = (publisher: string | LanguageMap) => {
   return typeof publisher === 'string' ? publisher : formatLanguageMap(publisher);
 };
@@ -166,6 +198,35 @@ export const getPrimaryLanguage = (lang: string | string[] | undefined) => {
   return 'en';
 };
 
+// Immutably apply edited metadata to a book, returning a NEW book object.
+// Callers must not mutate the existing book in place: <BookCover> is memoized
+// and compares fields off the book, so an in-place mutation makes the memo's
+// previous snapshot point to the same object and skips re-rendering the cover.
+export const getBookWithUpdatedMetadata = (
+  book: Book,
+  metadata: BookMetadata,
+  tags?: string[],
+): Book => {
+  const now = Date.now();
+  const updatedBook: Book = {
+    ...book,
+    metadata,
+    ...(tags ? { tags: [...tags] } : {}),
+    title: formatTitle(metadata.title),
+    author: formatAuthors(metadata.author),
+    primaryLanguage: getPrimaryLanguage(metadata.language),
+    updatedAt: now,
+    // The metadata group merges on its own clock so a page turn elsewhere
+    // (which dominates updatedAt) cannot clobber this edit (issue #5438).
+    metadataUpdatedAt: now,
+  };
+  const newCoverImageUrl = metadata.coverImageBlobUrl || metadata.coverImageUrl;
+  if (newCoverImageUrl) {
+    updatedBook.coverImageUrl = newCoverImageUrl;
+  }
+  return updatedBook;
+};
+
 export const formatDate = (date: string | number | Date | null | undefined, isUTC = false) => {
   if (!date) return;
   const userLang = getUserLang();
@@ -179,6 +240,36 @@ export const formatDate = (date: string | number | Date | null | undefined, isUT
   } catch {
     return;
   }
+};
+
+export const formatCalibreColumnValue = (column: CalibreCustomColumn): string => {
+  const { datatype, value, extra } = column;
+  if (Array.isArray(value)) return value.join(', ');
+  switch (datatype) {
+    case 'rating': {
+      // 0-10 in half stars, like calibre's own rendering
+      const rating = typeof value === 'number' ? value : 0;
+      return '★'.repeat(Math.floor(rating / 2)) + (rating % 2 ? '½' : '');
+    }
+    case 'series':
+      return extra != null ? `${value} [${extra}]` : String(value);
+    case 'datetime':
+      return formatDate(String(value), true) || '';
+    case 'comments':
+      return String(value)
+        .replace(/<[^>]*>/g, ' ')
+        .replace(/\s+/g, ' ')
+        .trim();
+    case 'bool':
+      return value ? '✓' : '✗';
+    default:
+      return String(value);
+  }
+};
+
+export const formatLocaleDateTime = (date: number | Date) => {
+  const userLang = getLocale();
+  return new Date(date).toLocaleString(userLang);
 };
 
 export const formatBytes = (bytes?: number | null, locale = 'en-US') => {
@@ -206,6 +297,23 @@ export const getCurrentPage = (book: Book, progress: BookProgress) => {
       ? pageinfo.current + 1
       : 0;
 };
+
+/**
+ * A book is "currently reading" iff it has real reading progress and has not
+ * been parked. Importing a book sets timestamps but never `progress` (only
+ * opening it does), so the progress gate drops freshly-added-but-unopened
+ * books; the status gate drops finished, abandoned (on hold) and
+ * manually-marked-unread books. A book actively being read has `readingStatus`
+ * either `undefined` (cleared from 'unread' on first open) or `'reading'`, both
+ * of which pass. Shared by the library's recently-read shelf and the
+ * home-screen reading widget so the two surfaces stay in sync.
+ */
+export const isCurrentlyReadingBook = (book: Book): boolean =>
+  !book.deletedAt &&
+  book.progress != null &&
+  book.readingStatus !== 'finished' &&
+  book.readingStatus !== 'abandoned' &&
+  book.readingStatus !== 'unread';
 
 export const getBookDirFromWritingMode = (writingMode: WritingMode) => {
   switch (writingMode) {
@@ -295,16 +403,33 @@ const getIdentifiersList = (
       : [identifiers.value];
 };
 
-export const getMetadataHash = (metadata: BookMetadata) => {
+export interface MetadataHashInfo {
+  title: string;
+  authors: string[];
+  identifiers: string[];
+  hashSource: string;
+  metaHash: string;
+}
+
+export const getMetadataHashInfo = (
+  metadata: BookMetadata,
+  filename?: string,
+): MetadataHashInfo | undefined => {
+  if (!metadata) return;
   try {
     const title = getTitleForHash(metadata.title);
-    const authors = getAuthorsList(metadata.author).join(',');
-    const identifiers = getIdentifiersList(metadata.altIdentifier || metadata.identifier).join(',');
-    const hashSource = `${title}|${authors}|${identifiers}`;
+    const authors = getAuthorsList(metadata.author);
+    const identifiers = getIdentifiersList(metadata.altIdentifier || metadata.identifier);
+    let hashSource = `${title}|${authors.join(',')}|${identifiers.join(',')}`;
+    if (filename) hashSource += `|${filename}`;
     const metaHash = md5(hashSource.normalize('NFC'));
-    return metaHash;
+    return { title, authors, identifiers, hashSource, metaHash };
   } catch (error) {
     console.error('Error generating metadata hash:', error);
   }
   return;
+};
+
+export const getMetadataHash = (metadata: BookMetadata, filename?: string) => {
+  return getMetadataHashInfo(metadata, filename)?.metaHash;
 };

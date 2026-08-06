@@ -2,16 +2,16 @@ import clsx from 'clsx';
 import React from 'react';
 import { useThemeStore } from '@/store/themeStore';
 
-interface RibbonProps {
-  width: string;
-}
-
-const Ribbon: React.FC<RibbonProps> = ({}) => {
+const Ribbon: React.FC = () => {
   const { safeAreaInsets } = useThemeStore();
 
+  // z-20 keeps the ribbon above the scrolled-mode `notch-area` mask (z-10 in
+  // SectionInfo) so its upper safe-area half isn't covered.
   return (
     <div
-      className={clsx('ribbon absolute inset-0 z-10 flex w-8 justify-center sm:w-6')}
+      className={clsx(
+        'ribbon pointer-events-none absolute right-0 top-0 z-20 flex w-8 justify-center sm:w-6',
+      )}
       style={{
         height: `${(safeAreaInsets?.top || 0) + 44}px`,
       }}

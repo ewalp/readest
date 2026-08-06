@@ -10,10 +10,12 @@ import { flattenContributors, formatAuthors, formatPublisher, formatTitle } from
 import { useFileSelector } from '@/hooks/useFileSelector';
 import { FormField } from './FormField';
 import BookCover from '@/components/BookCover';
+import { useSettingsStore } from '@/store/settingsStore';
 
 interface BookDetailEditProps {
   book: Book;
   metadata: BookMetadata;
+  tags: string[];
   fieldSources: Record<string, string>;
   lockedFields: Record<string, boolean>;
   fieldErrors: Record<string, string>;
@@ -33,6 +35,7 @@ const emptyCoverImageUrl = '_blank';
 const BookDetailEdit: React.FC<BookDetailEditProps> = ({
   book,
   metadata,
+  tags,
   fieldSources,
   lockedFields,
   fieldErrors,
@@ -48,6 +51,7 @@ const BookDetailEdit: React.FC<BookDetailEditProps> = ({
 }) => {
   const _ = useTranslation();
   const { appService } = useEnv();
+  const { settings } = useSettingsStore();
   const { selectFiles } = useFileSelector(appService, _);
 
   const hasLockedFields = Object.values(lockedFields).some((locked) => locked);
@@ -102,6 +106,12 @@ const BookDetailEdit: React.FC<BookDetailEditProps> = ({
       placeholder: _('Enter total books in series'),
     },
     {
+      field: 'isbn',
+      label: _('ISBN'),
+      value: metadata.isbn || '',
+      placeholder: '9780123456789',
+    },
+    {
       field: 'publisher',
       label: _('Publisher'),
       value: formatPublisher(metadata.publisher || ''),
@@ -125,7 +135,7 @@ const BookDetailEdit: React.FC<BookDetailEditProps> = ({
       field: 'identifier',
       label: _('Identifier'),
       value: metadata.identifier || '',
-      placeholder: '978-0123456789',
+      placeholder: _('Keep existing source identifier'),
     },
   ];
   const metadataFullwidthFields = [
@@ -134,6 +144,12 @@ const BookDetailEdit: React.FC<BookDetailEditProps> = ({
       label: _('Subjects'),
       value: flattenContributors(metadata.subject || []),
       placeholder: _('Fiction, Science, History'),
+    },
+    {
+      field: 'tags',
+      label: _('Tags'),
+      value: tags.join(', '),
+      placeholder: _('Favorites, To Read'),
     },
     {
       field: 'description',
@@ -173,6 +189,7 @@ const BookDetailEdit: React.FC<BookDetailEditProps> = ({
           >
             <BookCover
               mode='list'
+              showSpine={settings.librarySkeuomorphicCovers}
               book={{
                 ...book,
                 metadata: {

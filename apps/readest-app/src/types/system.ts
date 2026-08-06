@@ -1,15 +1,22 @@
 import { SystemSettings } from './settings';
-import { Book, BookConfig, BookContent, ViewSettings } from './book';
+import type { RssFeed } from '@/types/rss';
+import { Book, BookConfig, BookContent, ImportBookOptions, ViewSettings } from './book';
 import { BookMetadata } from '@/libs/document';
+import type { BookNav } from '@/services/nav';
 import { ProgressHandler } from '@/utils/transfer';
 import { CustomFont, CustomFontInfo } from '@/styles/fonts';
 import { CustomTextureInfo } from '@/styles/textures';
+import { DatabaseOpts, DatabaseService } from './database';
+import { SchemaType } from '@/services/database/migrate';
+import type { ImportedDictionary } from '@/services/dictionaries/types';
+import type { ImportDictionariesResult } from '@/services/dictionaries/dictionaryService';
+import type { SelectedFile } from '@/hooks/useFileSelector';
 
-export type AppPlatform = 'web' | 'tauri';
+export type AppPlatform = 'web' | 'tauri' | 'node';
 export type OsPlatform = 'android' | 'ios' | 'macos' | 'windows' | 'linux' | 'unknown';
-// prettier-ignore
-export type BaseDir = | 'Books' | 'Settings' | 'Data' | 'Fonts' | 'Images' | 'Log' | 'Cache' | 'Temp' | 'None';
-export type DeleteAction = 'cloud' | 'local' | 'both';
+// biome-ignore format: keep the union members compact on a single line
+export type BaseDir = | 'Books' | 'Settings' | 'Data' | 'Fonts' | 'Images' | 'Dictionaries' | 'Log' | 'Cache' | 'Temp' | 'None';
+export type DeleteAction = 'cloud' | 'local' | 'both' | 'purge';
 export type SelectDirectoryMode = 'read' | 'write';
 export type DistChannel = 'readest' | 'playstore' | 'appstore' | 'unknown';
 
@@ -35,7 +42,7 @@ export type FileInfo = {
 };
 
 export type NativeTouchEventType = {
-  type: 'touchstart' | 'touchcancel' | 'touchend';
+  type: 'touchstart' | 'touchmove' | 'touchcancel' | 'touchend';
   pointerId: number;
   x: number;
   y: number;
@@ -50,16 +57,26 @@ export interface FileSystem {
   getBlobURL(path: string, base: BaseDir): Promise<string>;
   getImageURL(path: string): Promise<string>;
   openFile(path: string, base: BaseDir, filename?: string): Promise<File>;
-  copyFile(srcPath: string, dstPath: string, base: BaseDir): Promise<void>;
+  copyFile(srcPath: string, srcBase: BaseDir, dstPath: string, dstBase: BaseDir): Promise<void>;
   readFile(path: string, base: BaseDir, mode: 'text' | 'binary'): Promise<string | ArrayBuffer>;
   writeFile(path: string, base: BaseDir, content: string | ArrayBuffer | File): Promise<void>;
   removeFile(path: string, base: BaseDir): Promise<void>;
-  readDir(path: string, base: BaseDir): Promise<FileItem[]>;
+  readDir(path: string, base: BaseDir, extensions?: string[]): Promise<FileItem[]>;
   createDir(path: string, base: BaseDir, recursive?: boolean): Promise<void>;
   removeDir(path: string, base: BaseDir, recursive?: boolean): Promise<void>;
   exists(path: string, base: BaseDir): Promise<boolean>;
   stats(path: string, base: BaseDir): Promise<FileInfo>;
   getPrefix(base: BaseDir): Promise<string>;
+}
+
+export interface SaveLibraryBooksOptions {
+  /**
+   * Overwrite `library.json` with exactly the given set, allowing it to shrink.
+   * Reserved for deliberate, authoritative rewrites (tombstone GC, explicit
+   * "clear library", account reset). Routine saves must NOT set this — the
+   * default merge-floor protects against silently dropping books on disk.
+   */
+  replace?: boolean;
 }
 
 export interface AppService {
@@ -75,6 +92,8 @@ export interface AppService {
   hasUpdater: boolean;
   hasOrientationLock: boolean;
   hasScreenBrightness: boolean;
+  /** True when a hardware ambient light sensor can drive Ambient Mode. */
+  hasAmbientLightSensor: boolean;
   hasIAP: boolean;
   isMobile: boolean;
   isAppDataSandbox: boolean;
@@ -83,25 +102,30 @@ export interface AppService {
   isIOSApp: boolean;
   isMacOSApp: boolean;
   isLinuxApp: boolean;
+  isWindowsApp: boolean;
   isPortableApp: boolean;
   isDesktopApp: boolean;
   isAppImage: boolean;
   isEink: boolean;
   canCustomizeRootDir: boolean;
   canReadExternalDir: boolean;
+  supportsCanvasContext2DFilter: boolean;
+  supportsViewTransitionsAPI: boolean;
+  supportsViewTransitionGroup: boolean;
   distChannel: DistChannel;
   storefrontRegionCode: string | null;
   isOnlineCatalogsAccessible: boolean;
 
   init(): Promise<void>;
   openFile(path: string, base: BaseDir): Promise<File>;
-  copyFile(srcPath: string, dstPath: string, base: BaseDir): Promise<void>;
+  copyFile(srcPath: string, srcBase: BaseDir, dstPath: string, dstBase: BaseDir): Promise<void>;
   readFile(path: string, base: BaseDir, mode: 'text' | 'binary'): Promise<string | ArrayBuffer>;
   writeFile(path: string, base: BaseDir, content: string | ArrayBuffer | File): Promise<void>;
   createDir(path: string, base: BaseDir, recursive?: boolean): Promise<void>;
   deleteFile(path: string, base: BaseDir): Promise<void>;
   deleteDir(path: string, base: BaseDir, recursive?: boolean): Promise<void>;
   exists(path: string, base: BaseDir): Promise<boolean>;
+  isDirectory(path: string, base: BaseDir): Promise<boolean>;
   getImageURL(path: string): Promise<string>;
 
   setCustomRootDir(customRootDir: string): Promise<void>;
@@ -109,8 +133,36 @@ export interface AppService {
   getCachedImageUrl(pathOrUrl: string): Promise<string>;
   selectDirectory(mode: SelectDirectoryMode): Promise<string>;
   selectFiles(name: string, extensions: string[]): Promise<string[]>;
-  readDirectory(path: string, base: BaseDir): Promise<FileItem[]>;
-  saveFile(filename: string, content: string | ArrayBuffer, mimeType?: string): Promise<boolean>;
+  readDirectory(path: string, base: BaseDir, extensions?: string[]): Promise<FileItem[]>;
+  /**
+   * Best-effort: extend the Tauri `fs_scope` and `asset_protocol_scope`
+   * to cover the given paths. No-op on web. Used after a directory or
+   * file path is recovered from somewhere other than the native picker
+   * (e.g. localStorage of the last-used import folder), since the
+   * dialog plugin only auto-allows `fs_scope` for paths it returned in
+   * the current session.
+   */
+  allowPathsInScopes?(paths: string[], isDirectory: boolean): Promise<void>;
+  // Pass `null` for `content` when `options.filePath` already points to the
+  // file on disk you want to save/share — the native share path reads it
+  // directly instead of buffering an in-memory copy.
+  saveFile(
+    filename: string,
+    content: string | ArrayBuffer | null,
+    options?: {
+      filePath?: string;
+      mimeType?: string;
+      share?: boolean;
+      // Anchor point for the macOS / iPad share sheet. Coordinates are in
+      // CSS pixels of the WebView; the sharekit plugin maps them onto the
+      // native NSView. Without this, NSSharingServicePicker defaults to
+      // (0,0) of the WebView and pops at the top-left of the window.
+      sharePosition?: { x: number; y: number; preferredEdge?: 'top' | 'bottom' | 'left' | 'right' };
+    },
+  ): Promise<boolean>;
+  // Save an image into the system photo gallery (Android MediaStore). Returns
+  // false on platforms without a gallery (web/desktop) or on failure.
+  saveImageToGallery(filename: string, content: ArrayBuffer, mimeType: string): Promise<boolean>;
 
   getDefaultViewSettings(): ViewSettings;
   loadSettings(): Promise<SystemSettings>;
@@ -119,16 +171,16 @@ export interface AppService {
   deleteFont(font: CustomFont): Promise<void>;
   importImage(file?: string | File): Promise<CustomTextureInfo | null>;
   deleteImage(texture: CustomTextureInfo): Promise<void>;
-  importBook(
-    file: string | File,
-    books: Book[],
-    saveBook?: boolean,
-    saveCover?: boolean,
-    overwrite?: boolean,
-    transient?: boolean,
-  ): Promise<Book | null>;
+  importDictionaries(
+    files: SelectedFile[],
+    existingDictionaries?: ImportedDictionary[],
+  ): Promise<ImportDictionariesResult>;
+  deleteDictionary(dict: ImportedDictionary): Promise<void>;
+  importBook(file: string | File, books: Book[], options?: ImportBookOptions): Promise<Book | null>;
+  refreshBookMetadata(book: Book): Promise<boolean>;
   deleteBook(book: Book, deleteAction: DeleteAction): Promise<void>;
   uploadBook(book: Book, onProgress?: ProgressHandler): Promise<void>;
+  uploadBookCover(book: Book, onProgress?: ProgressHandler): Promise<void>;
   downloadBook(
     book: Book,
     onlyCover?: boolean,
@@ -142,7 +194,25 @@ export interface AppService {
     handleProgress: ProgressHandler,
     hash: string,
     temp?: boolean,
+    media?: string,
   ): Promise<string | undefined>;
+  uploadReplicaFile(
+    kind: string,
+    replicaId: string,
+    filename: string,
+    lfp: string,
+    base: BaseDir,
+    onProgress: ProgressHandler,
+  ): Promise<void>;
+  downloadReplicaFile(
+    kind: string,
+    replicaId: string,
+    filename: string,
+    lfp: string,
+    base: BaseDir,
+    onProgress?: ProgressHandler,
+  ): Promise<void>;
+  deleteReplicaBundle(kind: string, replicaId: string, filenames: string[]): Promise<void>;
   downloadBookCovers(books: Book[], redownload?: boolean): Promise<void>;
   exportBook(book: Book): Promise<boolean>;
   isBookAvailable(book: Book): Promise<boolean>;
@@ -150,12 +220,26 @@ export interface AppService {
   loadBookConfig(book: Book, settings: SystemSettings): Promise<BookConfig>;
   fetchBookDetails(book: Book): Promise<BookMetadata>;
   saveBookConfig(book: Book, config: BookConfig, settings?: SystemSettings): Promise<void>;
+  loadBookNav(book: Book): Promise<BookNav | null>;
+  saveBookNav(book: Book, nav: BookNav): Promise<void>;
   loadBookContent(book: Book): Promise<BookContent>;
+  resolveNativeBookFilePath(book: Book): Promise<string | null>;
+  loadFeeds(): Promise<RssFeed[]>;
+  saveFeeds(feeds: RssFeed[]): Promise<void>;
   loadLibraryBooks(): Promise<Book[]>;
-  saveLibraryBooks(books: Book[]): Promise<void>;
+  saveLibraryBooks(books: Book[], options?: SaveLibraryBooksOptions): Promise<void>;
   getCoverImageUrl(book: Book): string;
   getCoverImageBlobUrl(book: Book): Promise<string>;
   generateCoverImageUrl(book: Book): Promise<string>;
   updateCoverImage(book: Book, imageUrl?: string, imageFile?: string): Promise<void>;
+  computeCoverHash(book: Book): Promise<string | null>;
   ask(message: string): Promise<boolean>;
+  openDatabase(
+    schema: SchemaType,
+    path: string,
+    base: BaseDir,
+    opts?: DatabaseOpts,
+  ): Promise<DatabaseService>;
+  databaseExists(path: string, base: BaseDir): Promise<boolean>;
+  deleteDatabase(path: string, base: BaseDir): Promise<void>;
 }

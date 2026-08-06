@@ -4,25 +4,32 @@ import { FaSearch, FaChevronDown } from 'react-icons/fa';
 import { IoMdCloseCircle } from 'react-icons/io';
 import { MdDeleteOutline } from 'react-icons/md';
 
-import { md5 } from 'js-md5';
 import { useEnv } from '@/context/EnvContext';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { useReaderStore } from '@/store/readerStore';
 import { useSidebarStore } from '@/store/sidebarStore';
 import { useTranslation } from '@/hooks/useTranslation';
+import {
+  createLibrarySearchSession,
+  resolveSearchResultCfis,
+  searchLibraryBooks,
+  type LibrarySearchSession,
+} from '@/services/librarySearchService';
 import { BookSearchConfig, BookSearchMatch, BookSearchResult } from '@/types/book';
 import { useResponsiveSize } from '@/hooks/useResponsiveSize';
 import { debounce } from '@/utils/debounce';
 import { isCJKStr } from '@/utils/lang';
-import { createRejectFilter } from '@/utils/node';
 import Dropdown from '@/components/Dropdown';
 import SearchOptions from './SearchOptions';
 
 const MINIMUM_SEARCH_TERM_LENGTH_DEFAULT = 2;
 const MINIMUM_SEARCH_TERM_LENGTH_CJK = 1;
 const SEARCH_HISTORY_KEY = 'search-history';
-const SEARCH_CACHE_DIR = 'search';
+// Pre-search.db per-(term,config) JSON caches lived here; wiped once at
+// startup now that reader search runs on the shared per-book search.db.
+const LEGACY_SEARCH_CACHE_DIR = 'search';
+let legacySearchCacheCleared = false;
 const MAX_SEARCH_HISTORY = 10;
 
 interface SearchBarProps {
@@ -38,12 +45,12 @@ const SearchBar: React.FC<SearchBarProps> = ({ isVisible, bookKey, onHideSearchB
   const { getBookData } = useBookDataStore();
   const { getConfig, setConfig, saveConfig } = useBookDataStore();
   const { getView, getProgress, getViewSettings } = useReaderStore();
-  const { setSearchTerm, setSearchResults, setSearchProgress } = useSidebarStore();
+  const { setSearchTerm, setSearchResults, setSearchProgress, setSearchError } = useSidebarStore();
   const { getSearchNavState, getSearchStatus, setSearchStatus } = useSidebarStore();
   const viewSettings = getViewSettings(bookKey);
   const searchNavState = getSearchNavState(bookKey);
 
-  const { searchTerm } = searchNavState;
+  const { searchTerm, searchError } = searchNavState;
   const queuedSearchTerm = useRef('');
   const inputRef = useRef<HTMLInputElement>(null);
   const inputFocusedRef = useRef(false);
@@ -88,76 +95,31 @@ const SearchBar: React.FC<SearchBarProps> = ({ isVisible, bookKey, onHideSearchB
   const handleClearHistory = async () => {
     setSearchHistory([]);
     localStorage.removeItem(historyStorageKey);
-    await clearSearchCache();
   };
 
-  const getSearchCacheKey = useCallback((term: string, config: BookSearchConfig) => {
-    const configStr = JSON.stringify({
-      scope: config.scope,
-      matchCase: config.matchCase,
-      matchWholeWords: config.matchWholeWords,
-      matchDiacritics: config.matchDiacritics,
-    });
-    return md5(`${term}-${configStr}`);
-  }, []);
-
-  const getSearchCache = useCallback(
-    async (
-      term: string,
-      config: BookSearchConfig,
-    ): Promise<BookSearchResult[] | BookSearchMatch[] | null> => {
-      const cacheKey = getSearchCacheKey(term, config);
-      const cachePath = `${SEARCH_CACHE_DIR}/${bookHash}/${cacheKey}.json`;
-      try {
-        if (await appService?.exists(cachePath, 'Cache')) {
-          const content = await appService?.readFile(cachePath, 'Cache', 'text');
-          if (content) return JSON.parse(content as string);
-        }
-      } catch (error) {
-        console.error('Failed to read search cache:', error);
-      }
-      return null;
-    },
-    [bookHash, appService, getSearchCacheKey],
-  );
-
-  const saveSearchCache = useCallback(
-    async (
-      term: string,
-      config: BookSearchConfig,
-      results: BookSearchResult[] | BookSearchMatch[],
-    ) => {
-      const cacheKey = getSearchCacheKey(term, config);
-      const cacheDir = `${SEARCH_CACHE_DIR}/${bookHash}`;
-      const cachePath = `${cacheDir}/${cacheKey}.json`;
-      try {
-        if (!(await appService?.exists(cacheDir, 'Cache'))) {
-          await appService?.createDir(cacheDir, 'Cache', true);
-        }
-        await appService?.writeFile(cachePath, 'Cache', JSON.stringify(results));
-      } catch (error) {
-        console.error('Failed to save search cache:', error);
-      }
-    },
-    [bookHash, appService, getSearchCacheKey],
-  );
-
-  const clearSearchCache = useCallback(async () => {
-    const cacheDir = `${SEARCH_CACHE_DIR}/${bookHash}`;
-    try {
-      if (await appService?.exists(cacheDir, 'Cache')) {
-        await appService?.deleteDir(cacheDir, 'Cache', true);
-      }
-    } catch (error) {
-      console.error('Failed to clear search cache:', error);
-    }
-  }, [bookHash, appService]);
-
   const view = getView(bookKey)!;
+  // Reader search runs against the same per-book search.db the library page
+  // uses; the session caches the opened book and index handle across queries.
+  const searchSessionRef = useRef<LibrarySearchSession | null>(null);
+  const searchControllerRef = useRef<AbortController | null>(null);
+  useEffect(() => {
+    if (!legacySearchCacheCleared && appService) {
+      legacySearchCacheCleared = true;
+      void appService.deleteDir(LEGACY_SEARCH_CACHE_DIR, 'Cache', true).catch(() => {});
+    }
+  }, [appService]);
+  useEffect(
+    () => () => {
+      searchControllerRef.current?.abort();
+      void searchSessionRef.current?.close();
+      searchSessionRef.current = null;
+    },
+    [],
+  );
   const config = getConfig(bookKey)!;
   const bookData = getBookData(bookKey)!;
-  const progress = getProgress(bookKey)!;
-  const primaryLang = bookData.book?.primaryLanguage || 'en';
+  const progress = getProgress(bookKey);
+  const searchMode = (config.searchConfig as BookSearchConfig).mode;
 
   const iconSize12 = useResponsiveSize(12);
   const iconSize16 = useResponsiveSize(16);
@@ -209,11 +171,14 @@ const SearchBar: React.FC<SearchBarProps> = ({ isVisible, bookKey, onHideSearchB
 
   const handleSearchConfigChange = (searchConfig: BookSearchConfig) => {
     setConfig(bookKey, { searchConfig: { ...searchConfig } });
-    saveConfig(envConfig, bookKey, config, settings);
+    // setConfig is synchronous, so getConfig now returns the merged config to persist.
+    saveConfig(envConfig, bookKey, getConfig(bookKey)!, settings);
     handleSearchTermChange(searchTerm);
   };
 
   const exceedMinSearchTermLength = (searchTerm: string) => {
+    // Regex patterns can be a single character (e.g. \d), so bypass the gate.
+    if (searchMode === 'regex') return searchTerm.length >= 1;
     const minLength = isCJKStr(searchTerm)
       ? MINIMUM_SEARCH_TERM_LENGTH_CJK
       : MINIMUM_SEARCH_TERM_LENGTH_DEFAULT;
@@ -224,90 +189,132 @@ const SearchBar: React.FC<SearchBarProps> = ({ isVisible, bookKey, onHideSearchB
   const handleSearch = useCallback(
     async (term: string) => {
       console.log('searching for:', term);
+      const book = bookData.book;
+      if (!book || !appService) return;
 
-      const searchConfig = config.searchConfig as BookSearchConfig;
-      const cachedResults = await getSearchCache(term, searchConfig);
-      if (cachedResults) {
-        setSearchResults(bookKey, cachedResults);
-        setSearchProgress(bookKey, 1);
-        if (cachedResults.length > 0) {
-          addToHistory(term);
-        }
-      }
+      // Read the latest config from the store, not the render closure: an option
+      // change (e.g. "within N words") calls setConfig then triggers this search
+      // synchronously, before this callback is recreated — so the closure's
+      // `config` is stale by one change. getConfig reflects the just-set value.
+      const searchConfig = getConfig(bookKey)!.searchConfig as BookSearchConfig;
 
-      // Reset progress at start of search
+      searchControllerRef.current?.abort();
+      const controller = new AbortController();
+      searchControllerRef.current = controller;
+      const session = (searchSessionRef.current ??= createLibrarySearchSession(appService));
+
       setSearchProgress(bookKey, 0);
       setSearchStatus(bookKey, 'searching');
+      setSearchError(bookKey, null);
+      view.clearSearch();
 
-      const { section } = progress;
-      const index = searchConfig.scope === 'section' ? section.current : undefined;
-      const generator = await view.search({
-        ...searchConfig,
-        index,
-        query: term,
-        acceptNode: createRejectFilter({
-          tags: primaryLang.startsWith('ja') ? ['rt'] : [],
-        }),
-        results: cachedResults,
-      });
+      // progress is null until the book emits its first relocate event, so a
+      // search fired right after opening has no current section to scope to.
+      // Fall back to searching the whole book rather than throwing.
+      const sectionIndex = searchConfig.scope === 'section' ? progress?.section.current : undefined;
+
       const results: BookSearchResult[] = [];
-      let lastProgressLogTime = 0;
+      const stopped = () =>
+        controller.signal.aborted ||
+        getSearchStatus(bookKey) === 'terminated' ||
+        queuedSearchTerm.current !== term;
 
-      const processResults = async () => {
-        for await (const result of generator) {
-          if (getSearchStatus(bookKey) === 'terminated') {
-            console.log('search terminated');
+      try {
+        for await (const event of searchLibraryBooks(appService, [book], term, {
+          config: searchConfig,
+          signal: controller.signal,
+          session,
+          sectionIndex,
+        })) {
+          if (stopped()) return;
+          if (event.type === 'progress') {
+            setSearchProgress(bookKey, event.bookProgress);
+          } else if (event.type === 'result') {
+            // Results carry text-offset locators; resolve them to CFIs section
+            // by section so the list and in-page highlights can address the DOM.
+            const resolved = await resolveSearchResultCfis(
+              session,
+              book,
+              event.result.subitems.map((match) => match.locator),
+            );
+            if (stopped()) return;
+            const subitems: BookSearchMatch[] = [];
+            event.result.subitems.forEach((match, index) => {
+              const entry = resolved[index];
+              if (!entry) return;
+              subitems.push({
+                cfi: entry.cfi,
+                ...(entry.cfis ? { cfis: entry.cfis } : {}),
+                excerpt: match.excerpt,
+              });
+            });
+            if (subitems.length) {
+              results.push({ index: event.result.index, label: event.result.label, subitems });
+              setSearchResults(bookKey, [...results]);
+            }
+          } else if (event.type === 'book-error' || event.type === 'book-skipped') {
+            const code = event.type === 'book-error' ? event.code : undefined;
+            const message =
+              code === 'INVALID_REGEX'
+                ? _('Invalid regular expression')
+                : code === 'NEARBY_NEEDS_TWO_WORDS'
+                  ? _('Enter at least two words')
+                  : code === 'FUZZY_QUERY_TOO_LONG'
+                    ? _('Search query is too long')
+                    : _('Search failed');
+            if (event.type === 'book-error' && !code) {
+              console.error('search failed:', event.error);
+            }
+            setSearchError(bookKey, message);
+            setSearchResults(bookKey, []);
+            setSearchStatus(bookKey, 'completed');
+            setSearchProgress(bookKey, 1);
             return;
-          }
-          if (typeof result === 'string') {
-            if (result === 'done') {
-              setSearchStatus(bookKey, 'completed');
-              setSearchResults(bookKey, [...results]);
-              setSearchProgress(bookKey, 1);
-              if (results.length > 0) {
-                addToHistory(term);
-                await saveSearchCache(term, searchConfig, results);
-              }
-              console.log('search done');
+          } else if (event.type === 'book-completed') {
+            setSearchStatus(bookKey, 'completed');
+            setSearchResults(bookKey, [...results]);
+            setSearchProgress(bookKey, 1);
+            if (results.length > 0) {
+              addToHistory(term);
             }
-          } else {
-            if (result.progress) {
-              setSearchProgress(bookKey, result.progress);
-              const now = Date.now();
-              if (now - lastProgressLogTime >= 1000) {
-                console.log('search progress:', result.progress);
-                lastProgressLogTime = now;
-              }
-              if (queuedSearchTerm.current !== term) {
-                console.log('search term changed, resetting search');
-                resetSearch();
-                return;
-              }
-            } else {
-              results.push(result);
-              setSearchResults(bookKey, [...results]);
-            }
+            console.log('search done');
           }
-
           await new Promise((resolve) => setTimeout(resolve, 0));
         }
-      };
 
-      processResults();
+        // Replay the resolved matches through the view so every CFI gets its
+        // search highlight; the view does no searching of its own here.
+        if (!stopped() && results.length > 0) {
+          for await (const item of view.search({ ...searchConfig, query: term, results })) {
+            if (stopped()) return;
+            if (item === 'done') break;
+          }
+        }
+      } catch (err) {
+        if (controller.signal.aborted) return;
+        console.error('search failed:', err);
+        setSearchError(bookKey, _('Search failed'));
+        setSearchResults(bookKey, []);
+        setSearchStatus(bookKey, 'completed');
+        setSearchProgress(bookKey, 1);
+      }
     },
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [
       progress,
-      config.searchConfig,
+      bookKey,
+      bookData,
+      appService,
+      getConfig,
       setSearchResults,
       setSearchProgress,
+      setSearchError,
       addToHistory,
-      getSearchCache,
-      saveSearchCache,
     ],
   );
 
   const resetSearch = useCallback(() => {
+    searchControllerRef.current?.abort();
     setSearchResults(bookKey, []);
     view?.clearSearch();
   }, [bookKey, view, setSearchResults]);
@@ -338,7 +345,13 @@ const SearchBar: React.FC<SearchBarProps> = ({ isVisible, bookKey, onHideSearchB
           value={searchTerm}
           spellCheck={false}
           onChange={handleInputChange}
-          placeholder={_('Search...')}
+          placeholder={
+            searchMode === 'regex'
+              ? _('Search with regex')
+              : searchMode === 'nearby-words'
+                ? _('Words to find near each other')
+                : _('Search...')
+          }
           className='search-input w-full bg-transparent p-2 pr-0 ps-10 font-sans text-sm font-light focus:outline-none'
         />
 
@@ -361,10 +374,10 @@ const SearchBar: React.FC<SearchBarProps> = ({ isVisible, bookKey, onHideSearchB
           <Dropdown
             label={_('Search Options')}
             className={clsx(
-              window.innerWidth < 640 && 'dropdown-end',
-              'dropdown-bottom flex justify-center',
+              window.innerWidth < 640 ? 'dropdown-end' : 'dropdown-center',
+              'dropdown-bottom',
             )}
-            menuClassName={window.innerWidth < 640 ? 'no-triangle mt-1' : 'dropdown-center mt-3.5'}
+            menuClassName={clsx('no-triangle mt-1', window.innerWidth < 640 ? '' : '!relative')}
             buttonClassName={clsx(
               'btn btn-ghost h-8 min-h-8 w-8 p-0 rounded-none rounded-r-lg',
               viewSettings?.isEink ? '!bg-transparent hover:!bg-transparent' : '',
@@ -379,6 +392,8 @@ const SearchBar: React.FC<SearchBarProps> = ({ isVisible, bookKey, onHideSearchB
           </Dropdown>
         </div>
       </div>
+
+      {searchError && <div className='text-error px-2 text-xs'>{searchError}</div>}
 
       {searchHistory.length > 0 && !searchTerm && (
         <div className='relative flex'>

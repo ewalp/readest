@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { MdOutlineBookmarkAdd, MdOutlineBookmark } from 'react-icons/md';
+import { RiBookmarkLine, RiBookmarkFill } from 'react-icons/ri';
 
 import { useSettingsStore } from '@/store/settingsStore';
 import { useBookDataStore } from '@/store/bookDataStore';
@@ -12,6 +12,7 @@ import Button from '@/components/Button';
 import { getCurrentPage } from '@/utils/book';
 import { eventDispatcher } from '@/utils/event';
 import { isCfiInLocation } from '@/utils/cfi';
+import { useResponsiveSize } from '@/hooks/useResponsiveSize';
 
 interface BookmarkTogglerProps {
   bookKey: string;
@@ -26,6 +27,7 @@ const BookmarkToggler: React.FC<BookmarkTogglerProps> = ({ bookKey }) => {
   const [isBookmarked, setIsBookmarked] = useState(false);
   const config = getConfig(bookKey);
   const progress = getProgress(bookKey);
+  const iconSize18 = useResponsiveSize(18);
 
   const toggleBookmark = () => {
     const bookData = getBookData(bookKey);
@@ -47,6 +49,7 @@ const BookmarkToggler: React.FC<BookmarkTogglerProps> = ({ bookKey }) => {
         cfi,
         text: truncatedText ? truncatedText : `${getCurrentPage(bookData.book!, progress)}`,
         note: '',
+        page: progress.page,
         createdAt: Date.now(),
         updatedAt: Date.now(),
       };
@@ -57,6 +60,7 @@ const BookmarkToggler: React.FC<BookmarkTogglerProps> = ({ bookKey }) => {
         existingBookmark.deletedAt = null;
         existingBookmark.updatedAt = Date.now();
         existingBookmark.text = bookmark.text;
+        existingBookmark.page = bookmark.page;
       } else {
         bookmarks.push(bookmark);
       }
@@ -108,9 +112,9 @@ const BookmarkToggler: React.FC<BookmarkTogglerProps> = ({ bookKey }) => {
     <Button
       icon={
         isBookmarked ? (
-          <MdOutlineBookmark className='text-base-content' />
+          <RiBookmarkFill className='text-base-content' size={iconSize18} />
         ) : (
-          <MdOutlineBookmarkAdd className='text-base-content' />
+          <RiBookmarkLine className='text-base-content' size={iconSize18} />
         )
       }
       onClick={toggleBookmark}

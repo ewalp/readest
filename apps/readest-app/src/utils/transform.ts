@@ -10,6 +10,7 @@ import {
 } from '@/types/book';
 import { DBBookConfig, DBBook, DBBookNote } from '@/types/records';
 import { sanitizeString } from './sanitize';
+import { buildFeedBookUrl } from '@/services/rss/feedBookUrl';
 
 export const transformBookConfigToDB = (bookConfig: unknown, userId: string): DBBookConfig => {
   const {
@@ -18,6 +19,7 @@ export const transformBookConfigToDB = (bookConfig: unknown, userId: string): DB
     progress,
     location,
     xpointer,
+    rsvpPosition,
     searchConfig,
     viewSettings,
     updatedAt,
@@ -30,6 +32,7 @@ export const transformBookConfigToDB = (bookConfig: unknown, userId: string): DB
     location: location,
     xpointer: xpointer,
     progress: progress && JSON.stringify(progress),
+    rsvp_position: rsvpPosition && JSON.stringify(rsvpPosition),
     search_config: searchConfig && JSON.stringify(searchConfig),
     view_settings: viewSettings && JSON.stringify(viewSettings),
     updated_at: new Date(updatedAt ?? Date.now()).toISOString(),
@@ -43,6 +46,7 @@ export const transformBookConfigFromDB = (dbBookConfig: DBBookConfig): BookConfi
     progress,
     location,
     xpointer,
+    rsvp_position,
     search_config,
     view_settings,
     updated_at,
@@ -53,6 +57,7 @@ export const transformBookConfigFromDB = (dbBookConfig: DBBookConfig): BookConfi
     location,
     xpointer,
     progress: progress && JSON.parse(progress),
+    rsvpPosition: rsvp_position && JSON.parse(rsvp_position),
     searchConfig: search_config && JSON.parse(search_config),
     viewSettings: view_settings && JSON.parse(view_settings),
     updatedAt: new Date(updated_at!).getTime(),
@@ -72,7 +77,11 @@ export const transformBookToDB = (book: unknown, userId: string): DBBook => {
     tags,
     progress,
     readingStatus,
+    readingStatusUpdatedAt,
+    coverHash,
+    coverUpdatedAt,
     metadata,
+    metadataUpdatedAt,
     createdAt,
     updatedAt,
     deletedAt,
@@ -91,8 +100,14 @@ export const transformBookToDB = (book: unknown, userId: string): DBBook => {
     tags: tags,
     progress: progress,
     reading_status: readingStatus,
+    reading_status_updated_at: readingStatusUpdatedAt
+      ? new Date(readingStatusUpdatedAt).toISOString()
+      : null,
+    cover_hash: coverHash ?? null,
+    cover_updated_at: coverUpdatedAt ? new Date(coverUpdatedAt).toISOString() : null,
     source_title: sanitizeString(sourceTitle),
     metadata: metadata ? sanitizeString(JSON.stringify(metadata)) : null,
+    metadata_updated_at: metadataUpdatedAt ? new Date(metadataUpdatedAt).toISOString() : null,
     created_at: new Date(createdAt ?? Date.now()).toISOString(),
     updated_at: new Date(updatedAt ?? Date.now()).toISOString(),
     deleted_at: deletedAt ? new Date(deletedAt).toISOString() : null,
@@ -112,15 +127,19 @@ export const transformBookFromDB = (dbBook: DBBook): Book => {
     tags,
     progress,
     reading_status,
+    reading_status_updated_at,
+    cover_hash,
+    cover_updated_at,
     source_title,
     metadata,
+    metadata_updated_at,
     created_at,
     updated_at,
     deleted_at,
     uploaded_at,
   } = dbBook;
 
-  return {
+  const book: Book = {
     hash: book_hash,
     metaHash: meta_hash,
     format: format as BookFormat,
@@ -131,13 +150,25 @@ export const transformBookFromDB = (dbBook: DBBook): Book => {
     tags: tags,
     progress: progress,
     readingStatus: reading_status as ReadingStatus,
+    readingStatusUpdatedAt: reading_status_updated_at
+      ? new Date(reading_status_updated_at).getTime()
+      : undefined,
+    coverHash: cover_hash ?? null,
+    coverUpdatedAt: cover_updated_at ? new Date(cover_updated_at).getTime() : null,
     sourceTitle: source_title,
     metadata: metadata ? JSON.parse(metadata) : null,
+    metadataUpdatedAt: metadata_updated_at ? new Date(metadata_updated_at).getTime() : null,
     createdAt: new Date(created_at!).getTime(),
     updatedAt: new Date(updated_at!).getTime(),
     deletedAt: deleted_at ? new Date(deleted_at).getTime() : null,
     uploadedAt: uploaded_at ? new Date(uploaded_at).getTime() : null,
   };
+  // Native cloud DBBook has no `url` column; a feed book carries its feed URL in
+  // metadata so the reader can rebuild the feed:// descriptor here.
+  if (!book.url && book.metadata?.feedUrl) {
+    book.url = buildFeedBookUrl(book.metadata.feedUrl);
+  }
+  return book;
 };
 
 export const transformBookNoteToDB = (bookNote: unknown, userId: string): DBBookNote => {
@@ -147,10 +178,14 @@ export const transformBookNoteToDB = (bookNote: unknown, userId: string): DBBook
     id,
     type,
     cfi,
+    xpointer0,
+    xpointer1,
+    page,
     text,
     style,
     color,
     note,
+    global,
     createdAt,
     updatedAt,
     deletedAt,
@@ -163,10 +198,14 @@ export const transformBookNoteToDB = (bookNote: unknown, userId: string): DBBook
     id,
     type,
     cfi,
+    xpointer0,
+    xpointer1,
+    page,
     text: sanitizeString(text),
     style,
     color,
     note,
+    global,
     created_at: new Date(createdAt ?? Date.now()).toISOString(),
     updated_at: new Date(updatedAt ?? Date.now()).toISOString(),
     // note that only null deleted_at is updated to the database, undefined is not
@@ -181,10 +220,14 @@ export const transformBookNoteFromDB = (dbBookNote: DBBookNote): BookNote => {
     id,
     type,
     cfi,
+    xpointer0,
+    xpointer1,
+    page,
     text,
     style,
     color,
     note,
+    global,
     created_at,
     updated_at,
     deleted_at,
@@ -195,11 +238,15 @@ export const transformBookNoteFromDB = (dbBookNote: DBBookNote): BookNote => {
     metaHash: meta_hash,
     id,
     type: type as BookNoteType,
-    cfi,
+    cfi: cfi ?? '',
+    xpointer0,
+    xpointer1,
+    page,
     text,
     style: style as HighlightStyle,
     color: color as HighlightColor,
     note,
+    global,
     createdAt: new Date(created_at!).getTime(),
     updatedAt: new Date(updated_at!).getTime(),
     deletedAt: deleted_at ? new Date(deleted_at).getTime() : null,

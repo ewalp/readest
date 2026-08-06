@@ -1,10 +1,10 @@
 import { Fzf, FzfResultItem, byLengthAsc } from 'fzf';
 import { SettingsPanelType } from '@/components/settings/SettingsDialog';
-import { RiFontSize, RiDashboardLine, RiTranslate } from 'react-icons/ri';
+import { RiFontSize, RiDashboardLine, RiTranslate, RiShareLine } from 'react-icons/ri';
 import { VscSymbolColor } from 'react-icons/vsc';
 import { LiaHandPointerSolid } from 'react-icons/lia';
 import { IoAccessibilityOutline } from 'react-icons/io5';
-import { PiRobot, PiSun, PiMoon } from 'react-icons/pi';
+import { PiRobot, PiSpeakerHigh, PiSun, PiMoon } from 'react-icons/pi';
 import { TbSunMoon } from 'react-icons/tb';
 import { MdRefresh } from 'react-icons/md';
 import { IconType } from 'react-icons';
@@ -149,10 +149,12 @@ export const groupResultsByCategory = (
 const panelIcons: Record<SettingsPanelType, IconType> = {
   Font: RiFontSize,
   Layout: RiDashboardLine,
-  Color: VscSymbolColor,
+  Theme: VscSymbolColor,
   Control: LiaHandPointerSolid,
+  TTS: PiSpeakerHigh,
   Language: RiTranslate,
   AI: PiRobot,
+  Integrations: RiShareLine,
   Custom: IoAccessibilityOutline,
 };
 
@@ -235,6 +237,12 @@ const layoutPanelItems = [
     section: 'Layout',
   },
   {
+    id: 'settings.layout.useBookLayout',
+    labelKey: _('Use Book Layout'),
+    keywords: ['paragraph', 'book', 'layout', 'default', 'original', 'preserve'],
+    section: 'Paragraph',
+  },
+  {
     id: 'settings.layout.paragraphMargin',
     labelKey: _('Paragraph Margin'),
     keywords: ['paragraph', 'margin', 'spacing', 'gap'],
@@ -284,8 +292,8 @@ const layoutPanelItems = [
   },
   {
     id: 'settings.layout.pageGap',
-    labelKey: _('Column Gap (%)'),
-    keywords: ['page', 'gap', 'spacing', 'gutter'],
+    labelKey: _('Additional Margin (%)'),
+    keywords: ['page', 'margin', 'additional', 'gap', 'spacing', 'gutter', 'column'],
     section: 'Page',
   },
   {
@@ -355,7 +363,7 @@ const colorPanelItems = [
   {
     id: 'settings.color.backgroundTexture',
     labelKey: _('Background Image'),
-    keywords: ['background', 'texture', 'image', 'paper', 'pattern'],
+    keywords: ['background', 'texture', 'image', 'paper', 'pattern', 'library', 'reader'],
     section: 'Theme',
   },
   {
@@ -365,10 +373,22 @@ const colorPanelItems = [
     section: 'Highlight',
   },
   {
-    id: 'settings.color.ttsHighlightStyle',
+    id: 'settings.tts.ttsHighlightStyle',
     labelKey: _('TTS Highlighting'),
     keywords: ['tts', 'highlight', 'style', 'speech', 'read', 'aloud'],
     section: 'Highlight',
+  },
+  {
+    id: 'settings.tts.mediaMetadata',
+    labelKey: _('TTS Media Info Update Frequency'),
+    keywords: ['tts', 'media', 'metadata', 'bluetooth', 'notification', 'chapter', 'paragraph'],
+    section: 'TTS',
+  },
+  {
+    id: 'settings.tts.playerStyle',
+    labelKey: _('TTS Player Style'),
+    keywords: ['tts', 'player', 'mini', 'style', 'cover', 'full', 'minimal'],
+    section: 'TTS',
   },
   {
     id: 'settings.color.readingRuler',
@@ -393,9 +413,9 @@ const controlPanelItems = [
     section: 'Scroll',
   },
   {
-    id: 'settings.control.continuousScroll',
-    labelKey: _('Continuous Scroll'),
-    keywords: ['continuous', 'scroll', 'endless', 'infinite'],
+    id: 'settings.control.scroll.noContinuousScroll',
+    labelKey: _('Single Section Scroll'),
+    keywords: ['single', 'section', 'scroll', 'continuous', 'one', 'chapter'],
     section: 'Scroll',
   },
   {
@@ -426,6 +446,12 @@ const controlPanelItems = [
     id: 'settings.control.disableDoubleClick',
     labelKey: _('Disable Double Click'),
     keywords: ['disable', 'double', 'click', 'tap'],
+    section: 'Pagination',
+  },
+  {
+    id: 'settings.control.showPaginationButtons',
+    labelKey: _('Show Page Navigation Buttons'),
+    keywords: ['show', 'pagination', 'buttons', 'navigation', 'arrows', 'chevron', 'page', 'turn'],
     section: 'Pagination',
   },
   {
@@ -462,6 +488,18 @@ const controlPanelItems = [
     id: 'settings.control.colorEinkMode',
     labelKey: _('Color E-Ink Mode'),
     keywords: ['color', 'eink', 'e-ink', 'kaleido'],
+    section: 'Device',
+  },
+  {
+    id: 'settings.control.screenWakeLock',
+    labelKey: _('Keep Screen Awake'),
+    keywords: ['screen', 'wake', 'lock', 'awake', 'sleep', 'display'],
+    section: 'Device',
+  },
+  {
+    id: 'settings.control.autohideCursor',
+    labelKey: _('Auto-hide Cursor'),
+    keywords: ['cursor', 'mouse', 'pointer', 'hide', 'autohide', 'idle'],
     section: 'Device',
   },
   {
@@ -556,6 +594,24 @@ const aiPanelItems = [
     keywords: ['gateway', 'model', 'openai', 'gpt', 'claude'],
     section: 'AI Gateway',
   },
+  {
+    id: 'settings.ai.openrouterApiKey',
+    labelKey: _('OpenRouter API Key'),
+    keywords: ['openrouter', 'api', 'key', 'token', 'secret'],
+    section: 'OpenRouter',
+  },
+  {
+    id: 'settings.ai.openrouterBaseUrl',
+    labelKey: _('OpenRouter Base URL'),
+    keywords: ['openrouter', 'base', 'url', 'endpoint', 'openai', 'compatible'],
+    section: 'OpenRouter',
+  },
+  {
+    id: 'settings.ai.openrouterModel',
+    labelKey: _('OpenRouter Model'),
+    keywords: ['openrouter', 'model', 'claude', 'gpt', 'llama', 'deepseek'],
+    section: 'OpenRouter',
+  },
 ];
 
 // custom panel items
@@ -596,11 +652,6 @@ const actionItems = [
     keywords: ['screen', 'wake', 'lock', 'awake', 'sleep', 'display'],
   },
   {
-    id: 'action.autoUpload',
-    labelKey: _('Auto Upload Books to Cloud'),
-    keywords: ['auto', 'upload', 'cloud', 'sync', 'backup'],
-  },
-  {
     id: 'action.reload',
     labelKey: _('Reload Page'),
     keywords: ['reload', 'refresh', 'page'],
@@ -629,7 +680,6 @@ export interface CommandRegistryOptions {
   toggleFullscreen: () => void;
   toggleAlwaysOnTop: () => void;
   toggleScreenWakeLock: () => void;
-  toggleAutoUpload: () => void;
   reloadPage: () => void;
   toggleOpenLastBooks: () => void;
   showAbout: () => void;
@@ -672,7 +722,7 @@ export const buildCommandRegistry = (options: CommandRegistryOptions): CommandIt
 
   // add color panel items
   for (const def of colorPanelItems) {
-    items.push(createSettingsItem(def, 'Color'));
+    items.push(createSettingsItem(def, 'Theme'));
   }
 
   // add control panel items
@@ -751,13 +801,6 @@ export const buildCommandRegistry = (options: CommandRegistryOptions): CommandIt
     createActionItem({
       id: 'action.screenWakeLock',
       action: options.toggleScreenWakeLock,
-    }),
-  );
-
-  items.push(
-    createActionItem({
-      id: 'action.autoUpload',
-      action: options.toggleAutoUpload,
     }),
   );
 

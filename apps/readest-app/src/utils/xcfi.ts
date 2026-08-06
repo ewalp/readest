@@ -187,20 +187,103 @@ export class XCFI {
 
   /**
    * Parse XPointer string to extract element and text offset
+   *
+   * Supports three KOReader text reference formats:
+   * - `/text().N`      — cumulative character offset across all text in the element
+   * - `/text()[K].N`   — Kth direct text node child (1-based), offset N within that node
+   * - `/tag[idx].N`    — offset N directly on the last path element (no explicit
+   *                      `text()` step); CREngine emits this when the target
+   *                      point falls at the very start of an element's text
+   *                      content, e.g. `div[1].0`. Semantically equivalent to
+   *                      `/tag[idx]/text().N`.
    */
   private parseXPointer(xpointer: string): { element: Element; textOffset?: number } {
-    const textOffsetMatch = xpointer.match(/\/text\(\)\.(\d+)$/);
-    const textOffset = textOffsetMatch ? parseInt(textOffsetMatch[1]!, 10) : undefined;
+    // Format: /text()[K].N — indexed text node with offset
+    const indexedTextMatch = xpointer.match(/\/text\(\)\[(\d+)\]\.(\d+)$/);
+    if (indexedTextMatch) {
+      const textNodeIndex = parseInt(indexedTextMatch[1]!, 10); // 1-based
+      const offsetInNode = parseInt(indexedTextMatch[2]!, 10);
+      const elementPath = xpointer.replace(/\/text\(\)\[\d+\]\.\d+$/, '');
 
-    const elementPath =
-      textOffset !== undefined ? xpointer.replace(/\/text\(\)\.\d+$/, '') : xpointer;
+      const element = this.resolveXPointerPath(elementPath);
+      if (!element) {
+        throw new Error(`Cannot resolve XPointer path: ${elementPath}`);
+      }
 
-    const element = this.resolveXPointerPath(elementPath);
-    if (!element) {
-      throw new Error(`Cannot resolve XPointer path: ${elementPath}`);
+      // Find the Kth direct text node child and compute cumulative offset
+      const textOffset = this.resolveIndexedTextNode(element, textNodeIndex, offsetInNode);
+      return { element, textOffset };
     }
 
-    return { element, textOffset };
+    // Format: /text().N — cumulative character offset
+    const textOffsetMatch = xpointer.match(/\/text\(\)\.(\d+)$/);
+    if (textOffsetMatch) {
+      const textOffset = parseInt(textOffsetMatch[1]!, 10);
+      const elementPath = xpointer.replace(/\/text\(\)\.\d+$/, '');
+
+      const element = this.resolveXPointerPath(elementPath);
+      if (!element) {
+        throw new Error(`Cannot resolve XPointer path: ${elementPath}`);
+      }
+
+      return { element, textOffset };
+    }
+
+    // Format: /tag[idx].N — offset directly on the last element segment, with
+    // no `text()` step at all. Must be checked before the plain-path fallback
+    // since the trailing `.N` is not a valid tag/index segment on its own.
+    const elementOffsetMatch = xpointer.match(/^(.*\/\w+(?:\[\d+\])?)\.(\d+)$/);
+    if (elementOffsetMatch) {
+      const elementPath = elementOffsetMatch[1]!;
+      const textOffset = parseInt(elementOffsetMatch[2]!, 10);
+
+      const element = this.resolveXPointerPath(elementPath);
+      if (!element) {
+        throw new Error(`Cannot resolve XPointer path: ${elementPath}`);
+      }
+
+      return { element, textOffset };
+    }
+
+    // No offset suffix: point at the start of the element itself.
+    const element = this.resolveXPointerPath(xpointer);
+    if (!element) {
+      throw new Error(`Cannot resolve XPointer path: ${xpointer}`);
+    }
+
+    return { element };
+  }
+
+  /**
+   * Resolve text()[K].N to a cumulative character offset within the element.
+   * K is the 1-based index of direct text node children of the element
+   * (counting only Text nodes that are immediate children, skipping element children).
+   * N is the character offset within that specific text node.
+   */
+  private resolveIndexedTextNode(
+    element: Element,
+    textNodeIndex: number,
+    offsetInNode: number,
+  ): number {
+    let directTextCount = 0;
+    let cumulativeOffset = 0;
+
+    for (const child of Array.from(element.childNodes)) {
+      if (child.nodeType === Node.TEXT_NODE) {
+        directTextCount++;
+        if (directTextCount === textNodeIndex) {
+          return cumulativeOffset + offsetInNode;
+        }
+        cumulativeOffset += (child.textContent || '').length;
+      } else if (child.nodeType === Node.ELEMENT_NODE) {
+        // Count text length inside child elements for cumulative offset
+        cumulativeOffset += (child.textContent || '').length;
+      }
+    }
+
+    throw new Error(
+      `Text node index ${textNodeIndex} out of bounds (found ${directTextCount} direct text nodes)`,
+    );
   }
 
   private resolveXPointerPath(path: string): Element | null {
@@ -239,8 +322,10 @@ export class XCFI {
         throw new Error(`Invalid XPointer segment: ${segment}`);
       }
 
-      // Find child elements with matching tag name
-      const children = Array.from(current.children).filter(
+      // Find child elements with matching tag name. effectiveChildren drops
+      // cfi-inert nodes and hoists cfi-skip wrappers, so a layout-only wrapper
+      // doesn't shift indices relative to KOReader's wrapper-less DOM.
+      const children = this.effectiveChildren(current).filter(
         (child) => child.tagName.toLowerCase() === tagName?.toLowerCase(),
       );
 
@@ -352,6 +437,47 @@ export class XCFI {
   }
 
   /**
+   * Check if an element is injected by Readest at runtime and should be
+   * invisible to XPointer path building / resolution (e.g. skip-link div).
+   */
+  private static isCfiInert(element: Element): boolean {
+    return element.hasAttribute('cfi-inert');
+  }
+
+  /**
+   * A cfi-skip element (e.g. the layout-only scroll wrapper applyScrollableStyle
+   * adds around a table/equation) must be transparent to XPointer paths: KOReader's
+   * CREngine DOM has no such wrapper, so its children must keep the indices they'd
+   * have without it. Unlike cfi-inert (drops the node AND its subtree), cfi-skip
+   * hoists the node's children into its parent. Must match epubcfi.js's cfi-skip
+   * handling so CFI ↔ XPointer round-trips through the same logical structure.
+   */
+  private static isCfiSkip(element: Element): boolean {
+    return element.hasAttribute('cfi-skip');
+  }
+
+  /** Nearest ancestor-or-self element that is not a cfi-skip wrapper. */
+  private static skipTransparentParent(element: Element): Element {
+    let el: Element = element;
+    while (XCFI.isCfiSkip(el) && el.parentElement) el = el.parentElement;
+    return el;
+  }
+
+  /**
+   * Element children of `parent` as XPointer sees them: cfi-inert nodes removed and
+   * cfi-skip wrappers spliced out (their own children hoisted in place, recursively).
+   */
+  private effectiveChildren(parent: Element): Element[] {
+    const result: Element[] = [];
+    for (const child of Array.from(parent.children)) {
+      if (XCFI.isCfiInert(child)) continue;
+      if (XCFI.isCfiSkip(child)) result.push(...this.effectiveChildren(child));
+      else result.push(child);
+    }
+    return result;
+  }
+
+  /**
    * Build XPointer path from DOM element
    */
   private buildXPointerPath(targetElement: Element): string {
@@ -360,14 +486,23 @@ export class XCFI {
 
     // Build path from target back to root
     while (current && current !== this.document.documentElement) {
+      // A cfi-skip wrapper contributes no path segment: it is hoisted away, so
+      // just continue from its parent (matches KOReader's wrapper-less DOM).
+      if (XCFI.isCfiSkip(current)) {
+        current = current.parentElement;
+        continue;
+      }
       const parent: Element | null = current.parentElement;
       if (!parent) break;
 
       const tagName = current.tagName.toLowerCase();
-      // Count preceding siblings with same tag name (0-based for CREngine)
+      // Count preceding siblings with the same tag name among the effective
+      // (cfi-inert removed, cfi-skip hoisted) children of the nearest non-skip
+      // ancestor, so a layout-only wrapper doesn't shift the index.
+      const siblings = this.effectiveChildren(XCFI.skipTransparentParent(parent));
       let siblingIndex = 0;
       let totalSameTagSiblings = 0;
-      for (const sibling of Array.from(parent.children)) {
+      for (const sibling of siblings) {
         if (sibling.tagName.toLowerCase() === tagName) {
           if (sibling === current) {
             siblingIndex = totalSameTagSiblings;
@@ -400,7 +535,9 @@ export class XCFI {
   }
 
   /**
-   * Handle text offset within an element by finding character position
+   * Handle text offset within an element by finding character position.
+   * Produces KOReader-compatible text()[K].N format where K is the 1-based
+   * index of the direct text node child within its parent element.
    */
   private handleTextOffset(element: Element, cfiOffset: number): string {
     const textNodes: Text[] = [];
@@ -428,18 +565,29 @@ export class XCFI {
       return this.buildXPointerPath(element);
     }
 
-    // Find the containing element for this text node
-    let textParent = targetTextNode.parentElement;
-    while (textParent && !this.isSignificantElement(textParent)) {
-      textParent = textParent.parentElement;
-    }
-
-    if (!textParent) {
-      textParent = element as HTMLElement;
-    }
-
+    // Use the text node's direct parent for both path and indexing.
+    // This produces correct XPointers even when inline elements (like <a>)
+    // split text into multiple direct text node children.
+    const textParent = targetTextNode.parentElement || element;
     const basePath = this.buildXPointerPath(textParent);
-    return `${basePath}/text().${offsetInNode}`;
+
+    // Count direct text node children and find which one the target is
+    let directTextCount = 0;
+    let directTextIndex = 0;
+    for (const child of Array.from(textParent.childNodes)) {
+      if (child.nodeType === Node.TEXT_NODE && (child.textContent || '').length > 0) {
+        directTextCount++;
+        if (child === targetTextNode) {
+          directTextIndex = directTextCount;
+        }
+      }
+    }
+
+    // Omit [1] when there is only one direct text node (matches KOReader format)
+    if (directTextCount <= 1) {
+      return `${basePath}/text().${offsetInNode}`;
+    }
+    return `${basePath}/text()[${directTextIndex || 1}].${offsetInNode}`;
   }
 
   /**
@@ -477,45 +625,143 @@ export class XCFI {
       }
     }
   }
-
-  /**
-   * Check if an element is significant for XPointer path building
-   */
-  private isSignificantElement(element: Element): boolean {
-    const tagName = element.tagName.toLowerCase();
-
-    // Skip inline formatting elements that don't affect structure
-    const inlineElements = new Set([
-      'span',
-      'em',
-      'strong',
-      'i',
-      'b',
-      'u',
-      'small',
-      'mark',
-      'sup',
-      'sub',
-    ]);
-
-    return !inlineElements.has(tagName);
-  }
 }
+
+/**
+ * Minimal spine-section shape needed to anchor a CREngine DocFragment to a
+ * foliate-js section. Satisfied by `BookDoc.sections[i]` (which carries the
+ * spine `size` and `linear` attributes) as well as lightweight test stubs.
+ */
+export interface SpineSectionInfo {
+  size?: number;
+  linear?: string;
+}
+
+/**
+ * Cumulative reading-fraction boundaries for the spine, in `sections` order.
+ *
+ * Returns an array of length `sections.length + 1` where entry `i` is the
+ * fraction of the book (0..1) at the START of section `i`, so section `i`
+ * occupies `[boundaries[i], boundaries[i + 1])`. Weighting is by section
+ * `size` (foliate exposes the item byte size); when sizes are missing or all
+ * zero we fall back to equal weights so the table degrades gracefully.
+ */
+export const buildSectionFractionTable = (sections: SpineSectionInfo[]): number[] => {
+  const n = sections.length;
+  const boundaries = new Array<number>(n + 1).fill(0);
+  if (n === 0) return boundaries;
+
+  const weights = sections.map((s) =>
+    typeof s?.size === 'number' && Number.isFinite(s.size) && s.size > 0 ? s.size : 0,
+  );
+  const total = weights.reduce((a, b) => a + b, 0);
+
+  if (total <= 0) {
+    // No usable sizes: assume uniform section weights.
+    for (let i = 0; i <= n; i++) boundaries[i] = i / n;
+    return boundaries;
+  }
+
+  let cum = 0;
+  for (let i = 0; i < n; i++) {
+    boundaries[i] = cum / total;
+    cum += weights[i]!;
+    boundaries[i + 1] = cum / total;
+  }
+  boundaries[n] = 1;
+  return boundaries;
+};
+
+/**
+ * Section index whose fraction range contains `fraction` (0..1), using the
+ * cumulative boundaries from {@link buildSectionFractionTable}. Ranges are
+ * treated as upper-exclusive, so a value exactly on a boundary maps to the
+ * section that STARTS there.
+ */
+export const sectionIndexForFraction = (fraction: number, boundaries: number[]): number => {
+  const n = boundaries.length - 1;
+  if (n <= 0) return 0;
+  const f = Math.min(Math.max(fraction, 0), 1);
+  for (let i = 0; i < n; i++) {
+    if (f < boundaries[i + 1]!) return i;
+  }
+  return n - 1;
+};
+
+/**
+ * Resolve the FOLIATE spine-section index that a CREngine DocFragment XPointer
+ * actually points to.
+ *
+ * CREngine (KOReader) does NOT number its DocFragments in strict bijection with
+ * foliate-js's `sections` (the spine `<itemref>` order). Non-spine manifest
+ * files and fragment splitting make CREngine's `DocFragment[N]` drift away from
+ * foliate's section `N - 1`, producing a cumulative offset — real reports show
+ * `DocFragment[326]` landing on foliate section 274, and the reference case of
+ * KOReader chapter 9 opening on Readest chapter 10.
+ *
+ * Strategy — spine-order table + percentage anchor:
+ *  1. `nominalIndex` is CREngine's own 0-based number (`DocFragment[N] - 1`).
+ *  2. When the server also reports a reading `percentage`, map it to a section
+ *     via the cumulative size table of foliate sections (which ARE in spine
+ *     order). If `percentage` is CONSISTENT with the nominal section's own
+ *     fraction range, trust `nominalIndex` (keeps intra-section precision from
+ *     the XPointer path). If it is NOT (drift detected), re-anchor to the
+ *     percentage-derived section.
+ *  3. No usable percentage (or no sections) → clamp `nominalIndex` into range.
+ */
+export const resolveSpineSectionIndex = (
+  nominalIndex: number,
+  sections?: SpineSectionInfo[],
+  percentage?: number,
+): number => {
+  if (!sections || sections.length === 0) {
+    return Math.max(0, nominalIndex);
+  }
+  const lastIndex = sections.length - 1;
+  const clampedNominal = Math.min(Math.max(nominalIndex, 0), lastIndex);
+
+  if (
+    typeof percentage !== 'number' ||
+    !Number.isFinite(percentage) ||
+    percentage <= 0 ||
+    percentage > 1
+  ) {
+    return clampedNominal;
+  }
+
+  const boundaries = buildSectionFractionTable(sections);
+  const nominalStart = boundaries[clampedNominal]!;
+  const nominalEnd = boundaries[clampedNominal + 1]!;
+  // Small tolerance so a position exactly on a section boundary, or the
+  // sub-section paging difference between CREngine and foliate, doesn't
+  // trigger a spurious re-anchor when the nominal index is already correct.
+  const tol = 1e-4;
+  if (percentage >= nominalStart - tol && percentage <= nominalEnd + tol) {
+    return clampedNominal;
+  }
+  // Drift detected: CREngine's DocFragment number disagrees with where the
+  // reported percentage actually falls in spine order. Re-anchor by percentage.
+  return sectionIndexForFraction(percentage, boundaries);
+};
 
 export const getCFIFromXPointer = async (
   xpointer: string,
   doc?: Document,
   index?: number,
   bookDoc?: BookDoc,
+  percentage?: number,
 ) => {
-  const xSpineIndex = XCFI.extractSpineIndex(xpointer);
+  const nominalIndex = XCFI.extractSpineIndex(xpointer);
+  // Correct CREngine↔foliate DocFragment drift using the spine-order size
+  // table, anchored by the server-reported percentage when available.
+  const xSpineIndex = resolveSpineSectionIndex(nominalIndex, bookDoc?.sections, percentage);
   let converter: XCFI;
   if (index === xSpineIndex && doc) {
-    converter = new XCFI(doc, index || 0);
+    converter = new XCFI(doc, index);
   } else {
-    const doc = await bookDoc?.sections?.[xSpineIndex]?.createDocument();
-    if (!doc) throw new Error('Failed to load document for XPointer conversion.');
-    converter = new XCFI(doc, xSpineIndex || 0);
+    const sectionDoc = await bookDoc?.sections?.[xSpineIndex]?.createDocument();
+    if (!sectionDoc) throw new Error('Failed to load document for XPointer conversion.');
+    converter = new XCFI(sectionDoc, xSpineIndex);
   }
 
   const cfi = converter.xPointerToCFI(xpointer);

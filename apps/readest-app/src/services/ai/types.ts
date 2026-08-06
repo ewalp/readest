@@ -1,6 +1,4 @@
-import type { LanguageModel, EmbeddingModel } from 'ai';
-
-export type AIProviderName = 'ollama' | 'ai-gateway' | 'openai' | 'deepseek';
+export type AIProviderName = 'ollama' | 'ai-gateway' | 'openai' | 'deepseek' | 'openrouter';
 
 export interface AIProvider {
   id: AIProviderName;
@@ -38,12 +36,23 @@ export interface AISettings {
   deepseekModel?: string;
   deepseekEmbeddingModel?: string;
 
+  // OpenAI-compatible provider (OpenRouter, Together, Groq, vLLM, ...).
+  openrouterApiKey?: string;
+  openrouterBaseUrl?: string;
+  openrouterModel?: string;
+  openrouterEmbeddingModel?: string;
+
   spoilerProtection: boolean;
   maxContextChunks: number;
   indexingMode: 'on-demand' | 'background';
 
-  fontSize: number;
-  useBookTheme: boolean;
+  fontSize?: number;
+  useBookTheme?: boolean;
+
+  reedy?: {
+    enabled: boolean;
+    runtime?: 'mvp' | 'agent';
+  };
 }
 
 export interface TextChunk {

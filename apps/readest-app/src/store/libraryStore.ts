@@ -1,31 +1,49 @@
 import { create } from 'zustand';
-import { Book, BookGroupType, BooksGroup } from '@/types/book';
+import { Book, BookGroupType, ReadingStatus } from '@/types/book';
 import { EnvConfigType, isTauriAppPlatform } from '@/services/environment';
 import { BOOK_UNGROUPED_NAME } from '@/services/constants';
 import { md5Fingerprint } from '@/utils/md5';
 
 interface LibraryState {
   library: Book[]; // might contain deleted books
+  libraryLoaded: boolean;
   isSyncing: boolean;
   syncProgress: number;
   checkOpenWithBooks: boolean;
   checkLastOpenBooks: boolean;
-  currentBookshelf: (Book | BooksGroup)[];
+  currentBookshelf: Book[];
   selectedBooks: Set<string>; // hashes for books, ids for groups
   groups: Record<string, string>;
+  hashIndex: Map<string, number>; // hash -> array index for O(1) lookup
+  visibleLibrary: Book[];
   setIsSyncing: (syncing: boolean) => void;
   setSyncProgress: (progress: number) => void;
   setSelectedBooks: (ids: string[]) => void;
   getSelectedBooks: () => string[];
   toggleSelectedBook: (id: string) => void;
   getVisibleLibrary: () => Book[];
+  getBookByHash: (hash: string) => Book | undefined;
   setCheckOpenWithBooks: (check: boolean) => void;
   setCheckLastOpenBooks: (check: boolean) => void;
   setLibrary: (books: Book[]) => void;
-  updateBook: (envConfig: EnvConfigType, book: Book) => void;
-  updateBooks: (envConfig: EnvConfigType, books: Book[]) => void;
-  setCurrentBookshelf: (bookshelf: (Book | BooksGroup)[]) => void;
+  // The third parameter is required (no `?`) so a future caller cannot
+  // accidentally clear `readingStatus` by omitting it. Pass the desired final
+  // value explicitly: the existing `readingStatus`, `undefined` to clear, or
+  // a new status like 'finished'.
+  updateBookProgress: (
+    hash: string,
+    progress: [number, number],
+    readingStatus: ReadingStatus | undefined,
+  ) => void;
+  updateBook: (envConfig: EnvConfigType, book: Book) => Promise<void>;
+  updateBooks: (
+    envConfig: EnvConfigType,
+    books: Book[],
+    options?: { skipSave?: boolean },
+  ) => Promise<void>;
+  setCurrentBookshelf: (bookshelf: Book[]) => void;
   refreshGroups: () => void;
+  rebuildHashIndex: () => void;
   addGroup: (name: string) => BookGroupType;
   getGroups: () => BookGroupType[];
   getGroupId: (path: string) => string | undefined;
@@ -34,51 +52,133 @@ interface LibraryState {
   getGroupsByParent: (parentPath?: string) => BookGroupType[];
 }
 
+function buildHashIndex(books: Book[]): Map<string, number> {
+  const index = new Map<string, number>();
+  for (let i = 0; i < books.length; i++) {
+    index.set(books[i]!.hash, i);
+  }
+  return index;
+}
+
 export const useLibraryStore = create<LibraryState>((set, get) => ({
   library: [],
+  libraryLoaded: false,
   isSyncing: false,
   syncProgress: 0,
   currentBookshelf: [],
   selectedBooks: new Set(),
   groups: {},
+  hashIndex: new Map(),
+  visibleLibrary: [],
   checkOpenWithBooks: isTauriAppPlatform(),
   checkLastOpenBooks: isTauriAppPlatform(),
 
   setIsSyncing: (syncing: boolean) => set({ isSyncing: syncing }),
   setSyncProgress: (progress: number) => set({ syncProgress: progress }),
-  getVisibleLibrary: () => get().library.filter((book) => !book.deletedAt),
+  getVisibleLibrary: () => get().visibleLibrary,
+  getBookByHash: (hash: string) => {
+    const { library, hashIndex } = get();
+    const idx = hashIndex.get(hash);
+    return idx !== undefined ? library[idx] : undefined;
+  },
 
-  setCurrentBookshelf: (bookshelf: (Book | BooksGroup)[]) => {
+  setCurrentBookshelf: (bookshelf: Book[]) => {
     set({ currentBookshelf: bookshelf });
   },
 
   setCheckOpenWithBooks: (check) => set({ checkOpenWithBooks: check }),
   setCheckLastOpenBooks: (check) => set({ checkLastOpenBooks: check }),
   setLibrary: (books) => {
-    const { refreshGroups } = get();
-    set({ library: books });
-    refreshGroups();
+    set({
+      library: books,
+      libraryLoaded: true,
+      hashIndex: buildHashIndex(books),
+      visibleLibrary: books.filter((b) => !b.deletedAt),
+    });
+    get().refreshGroups();
   },
+
+  // Immutable lightweight progress update — skips refreshGroups (which is the
+  // expensive O(n) MD5 path) but still creates new array references for
+  // `library` and `visibleLibrary` so Zustand subscribers re-render correctly
+  // and the visibleLibrary cache stays in sync.
+  updateBookProgress: (hash, progress, readingStatus) => {
+    const { library, hashIndex } = get();
+    const idx = hashIndex.get(hash);
+    if (idx === undefined) return;
+    const book = library[idx]!;
+    const statusChanged = readingStatus !== book.readingStatus;
+    const updatedBook: Book = {
+      ...book,
+      progress,
+      readingStatus,
+      readingStatusUpdatedAt: statusChanged ? Date.now() : book.readingStatusUpdatedAt,
+      updatedAt: Date.now(),
+    };
+    const newLibrary = library.slice();
+    newLibrary[idx] = updatedBook;
+    set({
+      library: newLibrary,
+      visibleLibrary: newLibrary.filter((b) => !b.deletedAt),
+    });
+  },
+
+  rebuildHashIndex: () => {
+    set({ hashIndex: buildHashIndex(get().library) });
+  },
+
   updateBook: async (envConfig: EnvConfigType, book: Book) => {
     const appService = await envConfig.getAppService();
-    const { library } = get();
-    const bookIndex = library.findIndex((b) => b.hash === book.hash);
-    if (bookIndex !== -1) {
-      library[bookIndex] = book;
-    }
-    set({ library: [...library] });
-    await appService.saveLibraryBooks(library);
+    const { library, hashIndex } = get();
+    const idx = hashIndex.get(book.hash);
+    // Build the new library immutably — never mutate the previous-state array.
+    const newLibrary =
+      idx !== undefined
+        ? [...library.slice(0, idx), book, ...library.slice(idx + 1)]
+        : library.slice();
+    set({
+      library: newLibrary,
+      hashIndex: buildHashIndex(newLibrary),
+      visibleLibrary: newLibrary.filter((b) => !b.deletedAt),
+    });
+    await appService.saveLibraryBooks(newLibrary);
   },
-  updateBooks: async (envConfig: EnvConfigType, books: Book[]) => {
+  updateBooks: async (
+    envConfig: EnvConfigType,
+    books: Book[],
+    options?: { skipSave?: boolean },
+  ) => {
     if (!books?.length) return;
 
-    const appService = await envConfig.getAppService();
-    const { library, refreshGroups } = get();
+    // Hardening: if a caller (e.g. /send, the inbox drainer) hits us before
+    // `setLibrary` has populated the store, merging against the empty
+    // in-memory array would persist `books` as the *entire* library and
+    // clobber whatever is on disk. Load the real library first.
+    let { library } = get();
+    const { libraryLoaded, refreshGroups } = get();
+    if (!libraryLoaded) {
+      const appService = await envConfig.getAppService();
+      library = await appService.loadLibraryBooks();
+      set({
+        library,
+        libraryLoaded: true,
+        hashIndex: buildHashIndex(library),
+        visibleLibrary: library.filter((b) => !b.deletedAt),
+      });
+    }
 
     const newLibrary = Array.from(new Map([...library, ...books].map((b) => [b.hash, b])).values());
-    set({ library: newLibrary });
+    set({
+      library: newLibrary,
+      hashIndex: buildHashIndex(newLibrary),
+      visibleLibrary: newLibrary.filter((b) => !b.deletedAt),
+    });
     refreshGroups();
-    await appService.saveLibraryBooks(newLibrary);
+
+    if (!options?.skipSave) {
+      const appService = await envConfig.getAppService();
+      await appService.saveLibraryBooks(newLibrary);
+    }
   },
 
   setSelectedBooks: (ids: string[]) => {
