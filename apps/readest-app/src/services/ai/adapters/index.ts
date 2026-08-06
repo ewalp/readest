@@ -1,4 +1,11 @@
-export { createTauriAdapter, getLastSources, clearLastSources, cancelBackgroundStream, getBackgroundStream, clearBackgroundStream } from './TauriChatAdapter';
+export {
+  createTauriAdapter,
+  getLastSources,
+  clearLastSources,
+  cancelBackgroundStream,
+  getBackgroundStream,
+  clearBackgroundStream,
+} from './TauriChatAdapter';
 export type { TauriAdapterOptions } from './TauriChatAdapter';
 export { selectBackend } from './retrievalBackend';
 export type { RetrievalBackend, RetrievalBackendKind } from './retrievalBackend';

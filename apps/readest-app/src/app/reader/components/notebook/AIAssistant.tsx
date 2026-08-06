@@ -16,7 +16,12 @@ import { useBookDataStore } from '@/store/bookDataStore';
 import { useReaderStore } from '@/store/readerStore';
 import { useBookProgress } from '@/store/readerProgressStore';
 import { useAIChatStore } from '@/store/aiChatStore';
-import { createTauriAdapter, cancelBackgroundStream, getBackgroundStream, clearBackgroundStream } from '@/services/ai';
+import {
+  createTauriAdapter,
+  cancelBackgroundStream,
+  getBackgroundStream,
+  clearBackgroundStream,
+} from '@/services/ai';
 import {
   LegacyIdbBackend,
   ReedyBackend,
@@ -79,7 +84,8 @@ const ChatHistoryList = ({
   onSelect: (id: string) => void;
   onClose: () => void;
 }) => {
-  const { conversations, deleteConversation, renameConversation, loadConversations } = useAIChatStore();
+  const { conversations, deleteConversation, renameConversation, loadConversations } =
+    useAIChatStore();
 
   useEffect(() => {
     if (bookHash) loadConversations(bookHash);
@@ -186,10 +192,7 @@ const AIAssistantChat = memo(
     onSourceClick?: (source: SourceItem) => void;
     onResetIndex: () => void;
   }) => {
-    const {
-      activeConversationId,
-      isLoadingHistory,
-    } = useAIChatStore();
+    const { activeConversationId, isLoadingHistory } = useAIChatStore();
 
     // use a ref to keep up-to-date options without triggering re-renders of the runtime
     const optionsRef = useRef({
@@ -239,8 +242,9 @@ const AIAssistantChat = memo(
           const bg = getBackgroundStream();
           if (bg && bg.bookHash === bookHash && bg.isComplete && bg.fullText) {
             // Replace the last assistant message content with the complete bg stream text
-            const msgs = storedMessages.map(m => ({ ...m }));
-            const lastAssistantIdx = msgs.length - 1 - [...msgs].reverse().findIndex(m => m.role === 'assistant');
+            const msgs = storedMessages.map((m) => ({ ...m }));
+            const lastAssistantIdx =
+              msgs.length - 1 - [...msgs].reverse().findIndex((m) => m.role === 'assistant');
             if (lastAssistantIdx >= 0 && lastAssistantIdx < msgs.length) {
               msgs[lastAssistantIdx]!.content = bg.fullText;
             }
@@ -258,26 +262,36 @@ const AIAssistantChat = memo(
 
           // Assistant messages are completely managed by TauriChatAdapter background stream logic
           if (msg.role === 'assistant') {
-            console.log('[historyAdapter] Skipping assistant message save - managed by background stream');
+            console.log(
+              '[historyAdapter] Skipping assistant message save - managed by background stream',
+            );
             return;
           }
 
           let conversationId = useAIChatStore.getState().activeConversationId;
           if (conversationId) {
-            const exists = useAIChatStore.getState().conversations.some((c) => c.id === conversationId);
+            const exists = useAIChatStore
+              .getState()
+              .conversations.some((c) => c.id === conversationId);
             if (!exists) {
               if (!stateObj.pendingConversationPromise) {
-                stateObj.pendingConversationPromise = useAIChatStore.getState().createConversation(bookHash, 'Chat', conversationId).finally(() => {
-                  stateObj.pendingConversationPromise = null;
-                });
+                stateObj.pendingConversationPromise = useAIChatStore
+                  .getState()
+                  .createConversation(bookHash, 'Chat', conversationId)
+                  .finally(() => {
+                    stateObj.pendingConversationPromise = null;
+                  });
               }
               await stateObj.pendingConversationPromise;
             }
           } else {
             if (!stateObj.pendingConversationPromise) {
-              stateObj.pendingConversationPromise = useAIChatStore.getState().createConversation(bookHash, 'Chat').finally(() => {
-                stateObj.pendingConversationPromise = null;
-              });
+              stateObj.pendingConversationPromise = useAIChatStore
+                .getState()
+                .createConversation(bookHash, 'Chat')
+                .finally(() => {
+                  stateObj.pendingConversationPromise = null;
+                });
             }
             conversationId = await stateObj.pendingConversationPromise;
           }
@@ -393,12 +407,19 @@ const ThreadWrapper = ({
 
   useEffect(() => {
     const thread = assistantRuntime.thread;
-    if (!isLoadingHistory && hasActiveConversation && !hasResumedRef.current && thread.getState().messages.length === 0) {
+    if (
+      !isLoadingHistory &&
+      hasActiveConversation &&
+      !hasResumedRef.current &&
+      thread.getState().messages.length === 0
+    ) {
       const bg = getBackgroundStream();
       if (bg && bg.bookHash === bookHash && !bg.isComplete) {
         hasResumedRef.current = true;
         setTimeout(() => {
-          console.log('[ThreadWrapper] Found active background stream, triggering startRun to resume UI');
+          console.log(
+            '[ThreadWrapper] Found active background stream, triggering startRun to resume UI',
+          );
           thread.startRun(null);
         }, 100);
       }
@@ -573,7 +594,8 @@ const LegacyAIAssistant = ({ bookKey }: AIAssistantProps) => {
 
   const handleResetIndex = useCallback(async () => {
     if (!backend) return;
-    if (appService && !(await appService.ask(_('Are you sure you want to re-index this book?')))) return;
+    if (appService && !(await appService.ask(_('Are you sure you want to re-index this book?'))))
+      return;
     await backend.clearBook(bookHash);
     setIndexed(false);
     performIndexing();

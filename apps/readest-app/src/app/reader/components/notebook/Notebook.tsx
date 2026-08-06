@@ -50,8 +50,12 @@ const Notebook: React.FC = ({}) => {
   const { getView, getViewsById, getProgress, getViewSettings } = useReaderStore();
   const { getNotebookWidth, setNotebookWidth, setNotebookVisible, toggleNotebookPin } =
     useNotebookStore();
-  const { setNotebookNewAnnotation, setNotebookNewHighlightId, setNotebookEditAnnotation, setNotebookActiveTab } =
-    useNotebookStore();
+  const {
+    setNotebookNewAnnotation,
+    setNotebookNewHighlightId,
+    setNotebookEditAnnotation,
+    setNotebookActiveTab,
+  } = useNotebookStore();
 
   const [isSearchBarVisible, setIsSearchBarVisible] = useState(false);
   const [searchResults, setSearchResults] = useState<BookNote[] | null>(null);

@@ -59,7 +59,13 @@ function extractTitle(metadata?: BookDoc['metadata']): string {
     if (typeof metadata.title === 'object' && metadata.title !== null) {
       const titleObj = metadata.title as Record<string, string>;
       // Try common keys first, then fall back to any first value
-      return titleObj['en'] || titleObj['default'] || titleObj['zh'] || Object.values(titleObj).find(v => typeof v === 'string' && v.length > 0) || 'Unknown Book';
+      return (
+        titleObj['en'] ||
+        titleObj['default'] ||
+        titleObj['zh'] ||
+        Object.values(titleObj).find((v) => typeof v === 'string' && v.length > 0) ||
+        'Unknown Book'
+      );
     }
   } catch (e) {
     console.warn('[RAG] Failed to extract title from metadata:', e);
@@ -76,11 +82,17 @@ function extractAuthor(metadata?: BookDoc['metadata']): string {
     // Array of strings or Contributor objects
     if (Array.isArray(metadata.author)) {
       const names = (metadata.author as Array<string | { name?: Record<string, string> }>)
-        .map(item => {
+        .map((item) => {
           if (typeof item === 'string') return item;
           if (item && typeof item === 'object' && item.name) {
             const nameMap = item.name;
-            return nameMap['en'] || nameMap['default'] || nameMap['zh'] || Object.values(nameMap).find(v => typeof v === 'string' && v.length > 0) || '';
+            return (
+              nameMap['en'] ||
+              nameMap['default'] ||
+              nameMap['zh'] ||
+              Object.values(nameMap).find((v) => typeof v === 'string' && v.length > 0) ||
+              ''
+            );
           }
           return '';
         })
@@ -93,7 +105,13 @@ function extractAuthor(metadata?: BookDoc['metadata']): string {
       const contributor = metadata.author as { name?: Record<string, string> };
       if (contributor.name && typeof contributor.name === 'object') {
         const nameMap = contributor.name;
-        return nameMap['en'] || nameMap['default'] || nameMap['zh'] || Object.values(nameMap).find(v => typeof v === 'string' && v.length > 0) || 'Unknown Author';
+        return (
+          nameMap['en'] ||
+          nameMap['default'] ||
+          nameMap['zh'] ||
+          Object.values(nameMap).find((v) => typeof v === 'string' && v.length > 0) ||
+          'Unknown Author'
+        );
       }
     }
   } catch (e) {

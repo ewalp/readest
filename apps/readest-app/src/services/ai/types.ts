@@ -1,3 +1,5 @@
+import type { LanguageModel, EmbeddingModel } from 'ai';
+
 export type AIProviderName = 'ollama' | 'ai-gateway' | 'openai' | 'deepseek' | 'openrouter';
 
 export interface AIProvider {

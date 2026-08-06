@@ -59,7 +59,9 @@ class ChunkQueue {
     }
   }
 
-  get done() { return this._done; }
+  get done() {
+    return this._done;
+  }
 
   async next(): Promise<string | null> {
     if (this.buffer.length > 0) {
@@ -100,8 +102,12 @@ export function getBackgroundStream(): BackgroundStream | null {
 }
 
 let lastSources: ScoredChunk[] = [];
-export function getLastSources(): ScoredChunk[] { return lastSources; }
-export function clearLastSources(): void { lastSources = []; }
+export function getLastSources(): ScoredChunk[] {
+  return lastSources;
+}
+export function clearLastSources(): void {
+  lastSources = [];
+}
 
 /** Clear the background stream reference after it's been consumed */
 export function clearBackgroundStream() {
@@ -197,7 +203,10 @@ async function runStreamSingleTurn(
           if (!hasChunks) throw new Error('No content received from stream');
         } catch (streamError) {
           const sErr = streamError as Error;
-          const isAbort = sErr.name === 'AbortError' || sErr.message?.includes('cancelled') || sErr.message?.includes('Aborted');
+          const isAbort =
+            sErr.name === 'AbortError' ||
+            sErr.message?.includes('cancelled') ||
+            sErr.message?.includes('Aborted');
           if (isAbort) return;
           console.error('[BackgroundStream] Streaming failed:', streamError);
           const { generateText } = await import('ai');
@@ -229,16 +238,23 @@ async function runStreamSingleTurn(
       }
 
       // Incremental sync to store so history shows progress
-      if (Date.now() - lastSaveTime > SYNC_INTERVAL && stream.assistantMessageId && stream.conversationId) {
+      if (
+        Date.now() - lastSaveTime > SYNC_INTERVAL &&
+        stream.assistantMessageId &&
+        stream.conversationId
+      ) {
         lastSaveTime = Date.now();
         const { useAIChatStore } = await import('@/store/aiChatStore');
-        useAIChatStore.getState().saveMessage({
-          id: stream.assistantMessageId,
-          role: 'assistant',
-          content: stream.fullText,
-          conversationId: stream.conversationId,
-          createdAt: Date.now(),
-        }).catch(err => console.warn('[BackgroundStream] Incremental sync failed:', err));
+        useAIChatStore
+          .getState()
+          .saveMessage({
+            id: stream.assistantMessageId,
+            role: 'assistant',
+            content: stream.fullText,
+            conversationId: stream.conversationId,
+            createdAt: Date.now(),
+          })
+          .catch((err) => console.warn('[BackgroundStream] Incremental sync failed:', err));
       }
     }
 
@@ -286,14 +302,29 @@ async function startBackgroundPipeline(
   try {
     if (options.promptMode === 'discussion') {
       // Discussion mode: sequential student → crossfire → teacher pipeline
-      let discussionLog = "";
+      let discussionLog = '';
 
       const students = [
-        { name: '【学生各抒己见】逻辑杠精 独孤败天', desc: '逻辑杠精 独孤败天 (The Skeptic): 万古第一禁忌大神，严谨到恐怖的布局者。不相信任何现成结论，只问"这是天道的谎言吗？"。寻找逻辑死角，挑战权威定义，强迫进行深层推理。标志性口头禅："此法看似圆满，实则破绽百出。若天道反向运行，你这逻辑还站得住吗？"' },
-        { name: '【学生各抒己见】类比达人 紫金神龙', desc: '类比达人 紫金神龙 (The Analogist): 满嘴"嗷呜"、痞气十足的老痞龙。思维跳跃、极其接地气、满脑子损招。最讨厌正经八百的理论，总能把高深概念比喻成最俗最搞笑的段子。标志性口头禅："嗷呜！这什么狗屁原理？说白了不就是……"' },
-        { name: '【学生各抒己见】硬核实战 魔主', desc: '硬核实战 魔主 (The Pragmatist): 千古魔主，效率与力量的极致。霸道、冷酷、追求极致性能。不在乎过程多华丽，只在乎"能杀天吗？"。关注落地实践，剔除一切花架子。标志性口头禅："废话少说，告诉我这一招的杀伤力是多少？用不出来，那就是垃圾。"' },
-        { name: '【学生各抒己见】提问机器 龙宝宝', desc: '提问机器 龙宝宝 (The Curious Newbie): 爱吃果子、人畜无害的小豆丁。纯真、执着、大智若愚。用最天真的语气问出最根本的问题。标志性口头禅："神说，偶听不懂。那个叫XX的东西，能吃吗？"' },
-        { name: '【学生各抒己见】调皮学霸 辰南', desc: '调皮学霸 辰南 (The Innovator): 万古布局中的一线生机，不按常理出牌的天才。机灵、坚韧、擅长在绝境中找"外挂"。尊重规则但更擅长利用规则漏洞。标志性口头禅："按部就班太慢了，咱们直接挖它祖坟（底层源码），能不能拿到结果？"' }
+        {
+          name: '【学生各抒己见】逻辑杠精 独孤败天',
+          desc: '逻辑杠精 独孤败天 (The Skeptic): 万古第一禁忌大神，严谨到恐怖的布局者。不相信任何现成结论，只问"这是天道的谎言吗？"。寻找逻辑死角，挑战权威定义，强迫进行深层推理。标志性口头禅："此法看似圆满，实则破绽百出。若天道反向运行，你这逻辑还站得住吗？"',
+        },
+        {
+          name: '【学生各抒己见】类比达人 紫金神龙',
+          desc: '类比达人 紫金神龙 (The Analogist): 满嘴"嗷呜"、痞气十足的老痞龙。思维跳跃、极其接地气、满脑子损招。最讨厌正经八百的理论，总能把高深概念比喻成最俗最搞笑的段子。标志性口头禅："嗷呜！这什么狗屁原理？说白了不就是……"',
+        },
+        {
+          name: '【学生各抒己见】硬核实战 魔主',
+          desc: '硬核实战 魔主 (The Pragmatist): 千古魔主，效率与力量的极致。霸道、冷酷、追求极致性能。不在乎过程多华丽，只在乎"能杀天吗？"。关注落地实践，剔除一切花架子。标志性口头禅："废话少说，告诉我这一招的杀伤力是多少？用不出来，那就是垃圾。"',
+        },
+        {
+          name: '【学生各抒己见】提问机器 龙宝宝',
+          desc: '提问机器 龙宝宝 (The Curious Newbie): 爱吃果子、人畜无害的小豆丁。纯真、执着、大智若愚。用最天真的语气问出最根本的问题。标志性口头禅："神说，偶听不懂。那个叫XX的东西，能吃吗？"',
+        },
+        {
+          name: '【学生各抒己见】调皮学霸 辰南',
+          desc: '调皮学霸 辰南 (The Innovator): 万古布局中的一线生机，不按常理出牌的天才。机灵、坚韧、擅长在绝境中找"外挂"。尊重规则但更擅长利用规则漏洞。标志性口头禅："按部就班太慢了，咱们直接挖它祖坟（底层源码），能不能拿到结果？"',
+        },
       ];
 
       for (const role of students) {
@@ -302,9 +333,25 @@ async function startBackgroundPipeline(
         stream.queue.push(header);
         stream.fullText += header;
 
-        const roleSysPrompt = buildSystemPrompt(bookTitle, authorName, chunks, currentPage, 'discussion_student', role.desc, discussionLog);
+        const roleSysPrompt = buildSystemPrompt(
+          bookTitle,
+          authorName,
+          chunks,
+          currentPage,
+          'discussion_student',
+          role.desc,
+          discussionLog,
+        );
         const beforeLen = stream.fullText.length;
-        await runStreamSingleTurn(stream, bgSignal, roleSysPrompt, aiMessages, settings, provider, useApiRoute);
+        await runStreamSingleTurn(
+          stream,
+          bgSignal,
+          roleSysPrompt,
+          aiMessages,
+          settings,
+          provider,
+          useApiRoute,
+        );
         const roleOutput = stream.fullText.slice(beforeLen);
         discussionLog += `${header}${roleOutput}\n\n`;
 
@@ -319,9 +366,25 @@ async function startBackgroundPipeline(
       stream.queue.push(crossfireHeader);
       stream.fullText += crossfireHeader;
 
-      const crossfireSysPrompt = buildSystemPrompt(bookTitle, authorName, chunks, currentPage, 'discussion_crossfire', undefined, discussionLog);
+      const crossfireSysPrompt = buildSystemPrompt(
+        bookTitle,
+        authorName,
+        chunks,
+        currentPage,
+        'discussion_crossfire',
+        undefined,
+        discussionLog,
+      );
       const beforeCrossfire = stream.fullText.length;
-      await runStreamSingleTurn(stream, bgSignal, crossfireSysPrompt, aiMessages, settings, provider, useApiRoute);
+      await runStreamSingleTurn(
+        stream,
+        bgSignal,
+        crossfireSysPrompt,
+        aiMessages,
+        settings,
+        provider,
+        useApiRoute,
+      );
       const crossfireOutput = stream.fullText.slice(beforeCrossfire);
       discussionLog += `${crossfireHeader}${crossfireOutput}\n\n`;
 
@@ -335,17 +398,44 @@ async function startBackgroundPipeline(
       stream.queue.push(teacherHeader);
       stream.fullText += teacherHeader;
 
-      const teacherSysPrompt = buildSystemPrompt(bookTitle, authorName, chunks, currentPage, 'discussion_teacher', undefined, discussionLog);
-      await runStreamSingleTurn(stream, bgSignal, teacherSysPrompt, aiMessages, settings, provider, useApiRoute);
+      const teacherSysPrompt = buildSystemPrompt(
+        bookTitle,
+        authorName,
+        chunks,
+        currentPage,
+        'discussion_teacher',
+        undefined,
+        discussionLog,
+      );
+      await runStreamSingleTurn(
+        stream,
+        bgSignal,
+        teacherSysPrompt,
+        aiMessages,
+        settings,
+        provider,
+        useApiRoute,
+      );
     } else {
       // Standard / other modes
-      await runStreamSingleTurn(stream, bgSignal, systemPrompt, aiMessages, settings, provider, useApiRoute);
+      await runStreamSingleTurn(
+        stream,
+        bgSignal,
+        systemPrompt,
+        aiMessages,
+        settings,
+        provider,
+        useApiRoute,
+      );
     }
 
     aiLogger.chat.complete(stream.fullText.length);
   } catch (error) {
     const err = error as Error;
-    const isAbort = err.name === 'AbortError' || err.message?.includes('cancelled') || err.message?.includes('Aborted');
+    const isAbort =
+      err.name === 'AbortError' ||
+      err.message?.includes('cancelled') ||
+      err.message?.includes('Aborted');
     if (!isAbort) {
       console.error('[BackgroundStream] Error:', error);
       aiLogger.chat.error(err.message);
@@ -355,7 +445,12 @@ async function startBackgroundPipeline(
     stream.queue.finish();
 
     // Final update of the assistant message in the store
-    if (stream.assistantMessageId && stream.conversationId && stream.fullText && !bgSignal.aborted) {
+    if (
+      stream.assistantMessageId &&
+      stream.conversationId &&
+      stream.fullText &&
+      !bgSignal.aborted
+    ) {
       try {
         const { useAIChatStore } = await import('@/store/aiChatStore');
         await useAIChatStore.getState().saveMessage({
@@ -365,7 +460,10 @@ async function startBackgroundPipeline(
           conversationId: stream.conversationId,
           createdAt: Date.now(), // update time
         });
-        console.log('[BackgroundStream] Final store sync complete, length:', stream.fullText.length);
+        console.log(
+          '[BackgroundStream] Final store sync complete, length:',
+          stream.fullText.length,
+        );
       } catch (e) {
         console.error('[BackgroundStream] Final store sync failed:', e);
       }
@@ -401,7 +499,11 @@ export function createTauriAdapter(getOptions: () => TauriAdapterOptions): ChatM
 
       // Check for existing background stream for the SAME book (component remount)
       if (bgStream && bgStream.bookHash === bookHash) {
-        console.log('[TauriAdapter] Resuming background stream. Accumulated:', bgStream.fullText.length, 'chars');
+        console.log(
+          '[TauriAdapter] Resuming background stream. Accumulated:',
+          bgStream.fullText.length,
+          'chars',
+        );
 
         let text = bgStream.fullText;
         if (text) {
@@ -450,8 +552,16 @@ export function createTauriAdapter(getOptions: () => TauriAdapterOptions): ChatM
 
           const seen = new Set<string>();
           chunks = [];
-          for (const c of contextChunks) { chunks.push(c); seen.add(c.id); }
-          for (const c of searchChunks) { if (!seen.has(c.id)) { chunks.push(c); seen.add(c.id); } }
+          for (const c of contextChunks) {
+            chunks.push(c);
+            seen.add(c.id);
+          }
+          for (const c of searchChunks) {
+            if (!seen.has(c.id)) {
+              chunks.push(c);
+              seen.add(c.id);
+            }
+          }
 
           aiLogger.chat.context(chunks.length, chunks.map((c) => c.text).join('').length);
           sourceStore.replace(turnId, chunksToRetrieved(chunks));
@@ -460,7 +570,13 @@ export function createTauriAdapter(getOptions: () => TauriAdapterOptions): ChatM
         }
       }
 
-      const systemPrompt = buildSystemPrompt(bookTitle, authorName, chunks, currentPage, options.promptMode);
+      const systemPrompt = buildSystemPrompt(
+        bookTitle,
+        authorName,
+        chunks,
+        currentPage,
+        options.promptMode,
+      );
 
       const aiMessages = messages.map((m) => ({
         role: m.role as 'user' | 'assistant',
@@ -488,14 +604,16 @@ export function createTauriAdapter(getOptions: () => TauriAdapterOptions): ChatM
         console.log('[TauriAdapter] activeConversationId missing, waiting...');
         let attempts = 0;
         while (!activeConversationId && attempts < 20) {
-          await new Promise(r => setTimeout(r, 100));
+          await new Promise((r) => setTimeout(r, 100));
           activeConversationId = useAIChatStore.getState().activeConversationId;
           attempts++;
         }
       }
 
       if (!activeConversationId) {
-        console.warn('[TauriAdapter] No active conversation found after waiting, background stream will not persist');
+        console.warn(
+          '[TauriAdapter] No active conversation found after waiting, background stream will not persist',
+        );
       } else {
         const assistantMessageId = `${Date.now()}-assistant-${Math.random().toString(36).slice(2, 9)}`;
         const initialAssistantMsg = {
@@ -566,7 +684,10 @@ export function createTauriAdapter(getOptions: () => TauriAdapterOptions): ChatM
         bgStream = null;
         aiLogger.chat.complete(text.length);
       } catch {
-        console.log('[TauriAdapter] UI disconnected, background stream continues for book:', bookHash);
+        console.log(
+          '[TauriAdapter] UI disconnected, background stream continues for book:',
+          bookHash,
+        );
       }
     },
   };

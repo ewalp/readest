@@ -777,12 +777,24 @@ input[type='range'].slider-input {
 }
 
 /* Disable the default assistant-ui pulsing dot loading indicator */
-:where(.aui-md[data-status="running"]):empty::after,
-:where(.aui-md[data-status="running"]) > :where(:not(ol):not(ul):not(pre)):last-child::after,
-:where(.aui-md[data-status="running"]) > pre:last-child code::after,
-:where(.aui-md[data-status="running"]) > :where(:is(ol, ul):last-child) > :where(li:last-child:not(:has(* > li)))::after,
-:where(.aui-md[data-status="running"]) > :where(:is(ol, ul):last-child) > :where(li:last-child) > :where(:is(ol, ul):last-child) > :where(li:last-child:not(:has(* > li)))::after,
-:where(.aui-md[data-status="running"]) > :where(:is(ol, ul):last-child) > :where(li:last-child) > :where(:is(ol, ul):last-child) > :where(li:last-child) > :where(:is(ol, ul):last-child) > :where(li:last-child)::after {
+:where(.aui-md[data-status='running']):empty::after,
+:where(.aui-md[data-status='running']) > :where(:not(ol):not(ul):not(pre)):last-child::after,
+:where(.aui-md[data-status='running']) > pre:last-child code::after,
+:where(.aui-md[data-status='running'])
+  > :where(:is(ol, ul):last-child)
+  > :where(li:last-child:not(:has(* > li)))::after,
+:where(.aui-md[data-status='running'])
+  > :where(:is(ol, ul):last-child)
+  > :where(li:last-child)
+  > :where(:is(ol, ul):last-child)
+  > :where(li:last-child:not(:has(* > li)))::after,
+:where(.aui-md[data-status='running'])
+  > :where(:is(ol, ul):last-child)
+  > :where(li:last-child)
+  > :where(:is(ol, ul):last-child)
+  > :where(li:last-child)
+  > :where(:is(ol, ul):last-child)
+  > :where(li:last-child)::after {
   content: none !important;
   display: none !important;
   animation: none !important;

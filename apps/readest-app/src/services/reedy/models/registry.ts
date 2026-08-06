@@ -114,12 +114,18 @@ function chatModelIdFor(settings: AISettings): string {
   switch (settings.provider) {
     case 'ollama':
       return settings.ollamaModel || 'llama3.2';
+    case 'openai':
+      return settings.openAiModel || 'gpt-4o-mini';
+    case 'deepseek':
+      return settings.deepseekModel || 'deepseek-v4-pro';
     case 'ai-gateway':
       return (
         settings.aiGatewayCustomModel || settings.aiGatewayModel || 'google/gemini-2.5-flash-lite'
       );
     case 'openrouter':
       return settings.openrouterModel || 'openai/gpt-4o-mini';
+    default:
+      return 'gpt-4o-mini';
   }
 }
 
@@ -169,9 +175,15 @@ function embeddingModelIdFor(settings: AISettings): string {
   switch (settings.provider) {
     case 'ollama':
       return settings.ollamaEmbeddingModel || 'nomic-embed-text';
+    case 'openai':
+      return settings.openAiEmbeddingModel || 'text-embedding-3-small';
+    case 'deepseek':
+      return settings.deepseekEmbeddingModel || 'deepseek-v4-flash';
     case 'ai-gateway':
       return settings.aiGatewayEmbeddingModel || 'openai/text-embedding-3-small';
     case 'openrouter':
       return settings.openrouterEmbeddingModel || 'openai/text-embedding-3-small';
+    default:
+      return 'text-embedding-3-small';
   }
 }

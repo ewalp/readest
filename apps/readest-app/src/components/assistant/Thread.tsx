@@ -213,18 +213,23 @@ export const Thread: FC<ThreadProps> = ({
           </div>
           <h3 className='text-base-content mb-1 text-sm font-medium'>Ask about this book</h3>
           <p className='text-base-content/60 mb-4 text-xs'>Get answers based on the book content</p>
-          
-          <button 
-            type="button"
+
+          <button
+            type='button'
             onClick={() => {
               assistantRuntime.thread.append({
                 role: 'user',
-                content: [{ type: 'text', text: '【本章导读雷达】请根据当前章节内容，提出3个能够激发阅读兴趣、值得深思的核心或者悬念问题，不要剧透。' }]
+                content: [
+                  {
+                    type: 'text',
+                    text: '【本章导读雷达】请根据当前章节内容，提出3个能够激发阅读兴趣、值得深思的核心或者悬念问题，不要剧透。',
+                  },
+                ],
               });
             }}
-            className="btn border-base-content/20 bg-base-100 hover:bg-base-200 text-base-content mb-6 shadow-sm btn-sm gap-2 rounded-full font-medium"
+            className='btn border-base-content/20 bg-base-100 hover:bg-base-200 text-base-content mb-6 shadow-sm btn-sm gap-2 rounded-full font-medium'
           >
-            <Radar className="size-4 text-primary" />
+            <Radar className='size-4 text-primary' />
             提取本章导读雷达
           </button>
 
@@ -249,7 +254,11 @@ export const Thread: FC<ThreadProps> = ({
                 UserMessage,
                 EditComposer,
                 AssistantMessage: () => (
-                  <AssistantMessage sources={sources} onSourceClick={onSourceClick} fontSize={fontSize} />
+                  <AssistantMessage
+                    sources={sources}
+                    onSourceClick={onSourceClick}
+                    fontSize={fontSize}
+                  />
                 ),
               }}
             />
@@ -343,7 +352,11 @@ interface AssistantMessageProps {
   fontSize?: number;
 }
 
-const AssistantMessage: FC<AssistantMessageProps> = ({ sources = [], onSourceClick, fontSize = 14 }) => {
+const AssistantMessage: FC<AssistantMessageProps> = ({
+  sources = [],
+  onSourceClick,
+  fontSize = 14,
+}) => {
   return (
     <MessagePrimitive.Root className='group/message animate-in fade-in slide-in-from-bottom-1 relative mx-auto mb-1 flex w-full flex-col pb-0.5 duration-200'>
       <div className='flex flex-col items-start'>
@@ -379,7 +392,9 @@ const AssistantMessage: FC<AssistantMessageProps> = ({ sources = [], onSourceCli
             <AssistantIf condition={(s) => s.message.status?.type === 'running'}>
               <div className='mt-3 flex items-center gap-2.5 text-primary/80'>
                 <RoseCurveLoader size={24} k={5} particleCount={8} />
-                <span className='text-base-content/40 text-xs tracking-wider animate-pulse'>AI is responding...</span>
+                <span className='text-base-content/40 text-xs tracking-wider animate-pulse'>
+                  AI is responding...
+                </span>
               </div>
             </AssistantIf>
           </div>

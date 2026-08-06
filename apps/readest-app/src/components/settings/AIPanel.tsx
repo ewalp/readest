@@ -841,7 +841,7 @@ const AIPanel: React.FC = () => {
             <textarea
               className={clsx(
                 'textarea textarea-bordered w-full font-mono text-xs',
-                openAiCustomParamsError ? 'textarea-error' : ''
+                openAiCustomParamsError ? 'textarea-error' : '',
               )}
               rows={3}
               value={openAiCustomParams}
@@ -853,7 +853,9 @@ const AIPanel: React.FC = () => {
               <div className='text-error text-xs'>{openAiCustomParamsError}</div>
             ) : (
               <div className='text-base-content/60 text-xs'>
-                {_('Optional. Custom parameters merged directly into the API request body. Example: {"temperature": 0.7}')}
+                {_(
+                  'Optional. Custom parameters merged directly into the API request body. Example: {"temperature": 0.7}',
+                )}
               </div>
             )}
           </div>
@@ -873,7 +875,9 @@ const AIPanel: React.FC = () => {
               disabled={!enabled}
             />
             <div className='text-base-content/60 text-xs'>
-              {_('Note: Keep https://api.deepseek.com or change to a custom DeepSeek-compatible endpoint.')}
+              {_(
+                'Note: Keep https://api.deepseek.com or change to a custom DeepSeek-compatible endpoint.',
+              )}
             </div>
           </div>
           <div className='flex flex-col gap-2 py-3 pe-4'>
@@ -898,7 +902,9 @@ const AIPanel: React.FC = () => {
               disabled={!enabled}
             />
             <div className='text-base-content/60 text-xs'>
-              {_('Note: Dialog will automatically disable thinking mode and lock temperature to 0.0.')}
+              {_(
+                'Note: Dialog will automatically disable thinking mode and lock temperature to 0.0.',
+              )}
             </div>
           </div>
           <div className='flex flex-col gap-2 py-3 pe-4'>

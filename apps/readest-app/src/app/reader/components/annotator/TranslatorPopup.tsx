@@ -70,7 +70,7 @@ const TranslatorPopup: React.FC<TranslatorPopupProps> = ({
         }
 
         const fetchFn = isTauriAppPlatform() ? tauriFetch : window.fetch;
-        
+
         // 拆分成单个字分别获取拼音及释义
         const chars = Array.from(input).filter((c) => /[\u4e00-\u9fa5]/.test(c));
         if (chars.length === 0) {
@@ -86,10 +86,10 @@ const TranslatorPopup: React.FC<TranslatorPopupProps> = ({
                 method: 'GET',
                 headers: {
                   'Acs-Token': '163',
-                  'Referer': 'https://hanyu.baidu.com/',
+                  Referer: 'https://hanyu.baidu.com/',
                   'User-Agent':
                     'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/149.0.0.0 Safari/537.36',
-                  'Accept': 'application/json, text/plain, */*',
+                  Accept: 'application/json, text/plain, */*',
                 },
               });
 
@@ -97,7 +97,7 @@ const TranslatorPopup: React.FC<TranslatorPopupProps> = ({
                 return `${char}: 获取失败`;
               }
 
-              const detailData = await detailRes.json() as {
+              const detailData = (await detailRes.json()) as {
                 data?: {
                   detail?: WordDetail;
                 };
@@ -125,9 +125,14 @@ const TranslatorPopup: React.FC<TranslatorPopupProps> = ({
                       if (defText) {
                         definitions.push(`     • 📝 释义${index + 1}: ${defText}`);
                       }
-                      const zuciText = bd.zuci && Array.isArray(bd.zuci)
-                        ? bd.zuci.filter((z: ZuciItem) => z.name).slice(0, 3).map((z: ZuciItem) => z.name).join('、')
-                        : '';
+                      const zuciText =
+                        bd.zuci && Array.isArray(bd.zuci)
+                          ? bd.zuci
+                              .filter((z: ZuciItem) => z.name)
+                              .slice(0, 3)
+                              .map((z: ZuciItem) => z.name)
+                              .join('、')
+                          : '';
                       if (zuciText) {
                         definitions.push(`       🔤 组词: ${zuciText}`);
                       }
@@ -136,7 +141,11 @@ const TranslatorPopup: React.FC<TranslatorPopupProps> = ({
                 });
               }
 
-              if (definitions.length === 0 && detail.pinyinList && Array.isArray(detail.pinyinList)) {
+              if (
+                definitions.length === 0 &&
+                detail.pinyinList &&
+                Array.isArray(detail.pinyinList)
+              ) {
                 const pinyins = detail.pinyinList.map((p: PinyinItem) => p.name).join(', ');
                 definitions.push(`  • 拼音: ${pinyins}`);
               }
