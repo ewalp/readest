@@ -5,7 +5,16 @@ import { isTauriAppPlatform } from '@/services/environment';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const lunr = require('lunr') as typeof import('lunr');
 
-let sqliteDbPromise: Promise<any> | null = null;
+interface SqliteDb {
+  execute(
+    sql: string,
+    bindings?: unknown[],
+  ): Promise<{ rowsAffected: number; lastInsertId?: number }>;
+  select<T>(sql: string, bindings?: unknown[]): Promise<T[]>;
+  close(): Promise<boolean>;
+}
+
+let sqliteDbPromise: Promise<SqliteDb | null> | null = null;
 async function getSqliteDb() {
   if (!isTauriAppPlatform()) return null;
   if (sqliteDbPromise) return sqliteDbPromise;
@@ -14,7 +23,7 @@ async function getSqliteDb() {
     try {
       const { default: Database } = await import('@tauri-apps/plugin-sql');
       const db = await Database.load('sqlite:readest_ai.db');
-      
+
       // Initialize tables
       await db.execute(`
         CREATE TABLE IF NOT EXISTS conversations (
@@ -25,7 +34,7 @@ async function getSqliteDb() {
           updatedAt INTEGER NOT NULL
         );
       `);
-      
+
       await db.execute(`
         CREATE TABLE IF NOT EXISTS messages (
           id TEXT PRIMARY KEY,
@@ -35,14 +44,15 @@ async function getSqliteDb() {
           createdAt INTEGER NOT NULL
         );
       `);
-      
+
       await db.execute(`
         CREATE INDEX IF NOT EXISTS idx_messages_conversationId ON messages(conversationId);
       `);
 
       return db;
-    } catch (err: any) {
-      aiLogger.store.error('Failed to initialize SQLite database', err?.message || err);
+    } catch (err: unknown) {
+      const message = err instanceof Error ? err.message : String(err);
+      aiLogger.store.error('Failed to initialize SQLite database', message);
       sqliteDbPromise = null;
       return null;
     }
@@ -394,7 +404,13 @@ class AIStore {
     if (sdb) {
       await sdb.execute(
         `INSERT OR REPLACE INTO conversations (id, bookHash, title, createdAt, updatedAt) VALUES ($1, $2, $3, $4, $5)`,
-        [conversation.id, conversation.bookHash, conversation.title, conversation.createdAt, conversation.updatedAt]
+        [
+          conversation.id,
+          conversation.bookHash,
+          conversation.title,
+          conversation.createdAt,
+          conversation.updatedAt,
+        ],
       );
       this.conversationCache.delete(conversation.bookHash);
       return;
@@ -424,7 +440,7 @@ class AIStore {
     if (sdb) {
       const rows = (await sdb.select(
         `SELECT * FROM conversations WHERE bookHash = $1 ORDER BY updatedAt DESC`,
-        [bookHash]
+        [bookHash],
       )) as AIConversation[];
       this.conversationCache.set(bookHash, rows);
       return rows;
@@ -490,10 +506,11 @@ class AIStore {
   async updateConversationTitle(bookHash: string, id: string, title: string): Promise<void> {
     const sdb = await getSqliteDb();
     if (sdb) {
-      await sdb.execute(
-        `UPDATE conversations SET title = $1, updatedAt = $2 WHERE id = $3`,
-        [title, Date.now(), id]
-      );
+      await sdb.execute(`UPDATE conversations SET title = $1, updatedAt = $2 WHERE id = $3`, [
+        title,
+        Date.now(),
+        id,
+      ]);
       this.conversationCache.delete(bookHash);
       return;
     }
@@ -528,7 +545,7 @@ class AIStore {
     if (sdb) {
       await sdb.execute(
         `INSERT OR REPLACE INTO messages (id, conversationId, role, content, createdAt) VALUES ($1, $2, $3, $4, $5)`,
-        [message.id, message.conversationId, message.role, message.content, message.createdAt]
+        [message.id, message.conversationId, message.role, message.content, message.createdAt],
       );
       return;
     }
@@ -551,7 +568,7 @@ class AIStore {
     if (sdb) {
       const rows = (await sdb.select(
         `SELECT * FROM messages WHERE conversationId = $1 ORDER BY createdAt ASC`,
-        [conversationId]
+        [conversationId],
       )) as AIMessage[];
       return rows;
     }

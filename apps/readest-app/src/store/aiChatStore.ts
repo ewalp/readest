@@ -186,7 +186,8 @@ export const useAIChatStore = create<AIChatState>((set, get) => ({
     if (!currentBookHash) return;
 
     // Find the last assistant message
-    const lastAssistantIdx = messages.length - 1 - [...messages].reverse().findIndex(m => m.role === 'assistant');
+    const lastAssistantIdx =
+      messages.length - 1 - [...messages].reverse().findIndex((m) => m.role === 'assistant');
     if (lastAssistantIdx < 0 || lastAssistantIdx >= messages.length) return;
 
     const lastAssistant = messages[lastAssistantIdx]!;
@@ -197,7 +198,7 @@ export const useAIChatStore = create<AIChatState>((set, get) => ({
       await aiStore.saveMessage(currentBookHash, updated);
 
       set({
-        messages: messages.map((m, i) => i === lastAssistantIdx ? updated : m),
+        messages: messages.map((m, i) => (i === lastAssistantIdx ? updated : m)),
       });
       console.log('[aiChatStore] Updated last assistant message, length:', content.length);
     } catch (error) {

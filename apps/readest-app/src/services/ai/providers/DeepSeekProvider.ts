@@ -42,8 +42,8 @@ export class DeepSeekProvider implements AIProvider {
       stream: true,
       temperature: 0.0, // Minimum temperature to avoid wandering
       thinking: {
-        type: 'disabled' // Disable thinking mode
-      }
+        type: 'disabled', // Disable thinking mode
+      },
     });
 
     console.log('[DeepSeekProvider] Request Body:', body);
@@ -195,7 +195,7 @@ export class DeepSeekProvider implements AIProvider {
           messages: [{ role: 'user', content: 'hi' }],
           max_tokens: 1,
           temperature: 0.0,
-          thinking: { type: 'disabled' }
+          thinking: { type: 'disabled' },
         }),
         signal: controller.signal,
       });

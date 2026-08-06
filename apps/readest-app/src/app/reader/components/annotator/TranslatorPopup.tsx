@@ -151,7 +151,7 @@ const TranslatorPopup: React.FC<TranslatorPopupProps> = ({
               }
 
               return `${headerLine}\n${definitions.join('\n')}`;
-            } catch (e) {
+            } catch (_e) {
               return `${char}: 查询出错`;
             }
           }),

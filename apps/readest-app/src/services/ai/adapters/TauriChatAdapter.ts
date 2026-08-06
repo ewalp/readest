@@ -179,7 +179,7 @@ async function runStreamSingleTurn(
     if (useApiRoute) {
       rawStream = streamViaApiRoute(currentMessages, sysPrompt, settings, bgAbortSignal);
     } else if (settings.provider === 'openai' || settings.provider === 'deepseek') {
-      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // biome-ignore lint/suspicious/noExplicitAny: streamChat is not on the AIProvider interface
       const anyProvider = provider as any;
       if (typeof anyProvider.streamChat !== 'function') {
         throw new Error(`${settings.provider} Provider missing streamChat method`);
@@ -191,7 +191,7 @@ async function runStreamSingleTurn(
           const result = streamText({
             model: provider.getModel(),
             system: sysPrompt,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            // biome-ignore lint/suspicious/noExplicitAny: message types differ between ai SDK and our internal types
             messages: currentMessages as any,
             abortSignal: bgAbortSignal,
           });
@@ -213,7 +213,7 @@ async function runStreamSingleTurn(
           const result = await generateText({
             model: provider.getModel(),
             system: sysPrompt,
-            // eslint-disable-next-line @typescript-eslint/no-explicit-any
+            // biome-ignore lint/suspicious/noExplicitAny: message types differ between ai SDK and our internal types
             messages: currentMessages as any,
             abortSignal: bgAbortSignal,
           });
