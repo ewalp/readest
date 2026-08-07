@@ -602,29 +602,60 @@ export function createTauriAdapter(getOptions: () => TauriAdapterOptions): ChatM
       // In Encyclopedic Knowledge mode, perform a real-time web search for query context
       if (options.promptMode === 'knowledge' && query) {
         try {
-          const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
           const fetchFn = (await import('../utils/httpFetch')).getAIFetch();
-          const res = await fetchFn(searchUrl, {
-            headers: {
-              'User-Agent':
-                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
-            },
-          });
-          if (res.ok) {
-            const html = await res.text();
-            // Parse snippet entries from DuckDuckGo HTML
-            const snippets: string[] = [];
-            const regex = /<a class="result__snippet[^">]*>([\s\S]*?)<\/a>/g;
-            let match: RegExpExecArray | null;
-            while ((match = regex.exec(html)) !== null && snippets.length < 5) {
-              const cleanText = match[1]!.replace(/<[^>]+>/g, '').trim();
-              if (cleanText) snippets.push(cleanText);
+          const snippets: string[] = [];
+
+          // 1. Fetch from DuckDuckGo API
+          try {
+            const ddgUrl = `https://api.duckduckgo.com/?q=${encodeURIComponent(query)}&format=json&no_html=1`;
+            const ddgRes = await fetchFn(ddgUrl);
+            if (ddgRes.ok) {
+              const ddgData = (await ddgRes.json()) as {
+                AbstractText?: string;
+                Heading?: string;
+                RelatedTopics?: Array<{ Text?: string }>;
+              };
+              if (ddgData.AbstractText) {
+                snippets.push(
+                  `[DuckDuckGo - ${ddgData.Heading || 'Summary'}]: ${ddgData.AbstractText}`,
+                );
+              }
+              if (ddgData.RelatedTopics && Array.isArray(ddgData.RelatedTopics)) {
+                for (const item of ddgData.RelatedTopics.slice(0, 3)) {
+                  if (item.Text) {
+                    snippets.push(`[DuckDuckGo Topic]: ${item.Text}`);
+                  }
+                }
+              }
             }
-            if (snippets.length > 0) {
-              webSearchContext = snippets
-                .map((s, idx) => `[Web Result ${idx + 1}]: ${s}`)
-                .join('\n\n');
+          } catch (e) {
+            console.warn('[TauriAdapter] DuckDuckGo API search failed:', e);
+          }
+
+          // 2. Fetch from Wikipedia API (Chinese + English fallback)
+          try {
+            const wikiUrl = `https://zh.wikipedia.org/w/api.php?action=query&list=search&srsearch=${encodeURIComponent(query)}&format=json&origin=*`;
+            const wikiRes = await fetchFn(wikiUrl);
+            if (wikiRes.ok) {
+              const wikiData = (await wikiRes.json()) as {
+                query?: {
+                  search?: Array<{ title: string; snippet: string }>;
+                };
+              };
+              const items = wikiData.query?.search || [];
+              for (const item of items.slice(0, 3)) {
+                const cleanSnippet = item.snippet.replace(/<[^>]+>/g, '').trim();
+                if (cleanSnippet) {
+                  snippets.push(`[维基百科 - ${item.title}]: ${cleanSnippet}`);
+                }
+              }
             }
+          } catch (e) {
+            console.warn('[TauriAdapter] Wikipedia API search failed:', e);
+          }
+
+          if (snippets.length > 0) {
+            webSearchContext = snippets.join('\n\n');
           }
         } catch (webErr) {
           console.warn('[TauriAdapter] Web search fetch failed:', webErr);
