@@ -93,6 +93,7 @@ const AIPanel: React.FC = () => {
 
   const [fontSize, setFontSize] = useState(aiSettings.fontSize ?? DEFAULT_FONT_SIZE);
   const [useBookTheme, setUseBookTheme] = useState(aiSettings.useBookTheme ?? true);
+  const [spoilerProtection, setSpoilerProtection] = useState(aiSettings.spoilerProtection ?? true);
 
   const [openAiBaseUrl, setOpenAiBaseUrl] = useState(
     aiSettings.openAiBaseUrl || DEFAULT_OPENAI_BASE_URL,
@@ -570,6 +571,24 @@ const AIPanel: React.FC = () => {
                 className='toggle'
                 checked={useBookTheme}
                 onChange={() => setUseBookTheme(!useBookTheme)}
+              />
+            </div>
+            <div className='config-item'>
+              <div className='flex flex-col'>
+                <span>{_('Spoiler Protection')}</span>
+                <span className='text-base-content/60 text-xs'>
+                  {_('Restrict AI knowledge retrieval to pages read so far')}
+                </span>
+              </div>
+              <input
+                type='checkbox'
+                className='toggle'
+                checked={spoilerProtection}
+                onChange={() => {
+                  const next = !spoilerProtection;
+                  setSpoilerProtection(next);
+                  saveAiSetting('spoilerProtection', next);
+                }}
               />
             </div>
           </div>

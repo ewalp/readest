@@ -14,6 +14,7 @@ export function buildSystemPrompt(
     | 'discussion_teacher' = 'standard',
   roleDef?: string,
   discussionLog?: string,
+  spoilerProtection: boolean = true,
 ): string {
   let roleDesc = 'an intelligent reading companion';
   if (promptMode === 'devil') {
@@ -29,7 +30,9 @@ export function buildSystemPrompt(
     `You are reading "${bookTitle}"${authorName ? ' by ' + authorName : ''} together with the user.`,
     'CURRENT STATUS:',
     `- **Current Location**: Page ${currentPage + 1}`,
-    `- **Knowledge Scope**: You have read up to Page ${currentPage + 1}. You have NO knowledge of anything after this page.`,
+    spoilerProtection
+      ? `- **Knowledge Scope**: You have read up to Page ${currentPage + 1}. You have NO knowledge of anything after this page.`
+      : `- **Knowledge Scope**: You have full knowledge of the entire book. Ground your responses on all available book passages across all chapters.`,
   ].join('\n');
 
   let contextSection = '';

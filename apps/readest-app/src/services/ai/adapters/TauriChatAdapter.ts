@@ -582,6 +582,9 @@ export function createTauriAdapter(getOptions: () => TauriAdapterOptions): ChatM
         chunks,
         currentPage,
         options.promptMode,
+        undefined,
+        undefined,
+        settings.spoilerProtection ?? true,
       );
 
       const aiMessages = messages.map((m) => ({
