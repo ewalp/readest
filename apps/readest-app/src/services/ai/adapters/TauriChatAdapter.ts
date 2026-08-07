@@ -541,35 +541,50 @@ export function createTauriAdapter(getOptions: () => TauriAdapterOptions): ChatM
       const isIdx = backend?.isIndexed ? await backend.isIndexed(bookHash) : true;
       if (backend?.kind === 'legacy-idb' && isIdx) {
         try {
-          const searchChunks = backend.searchForSystemPrompt
-            ? await backend.searchForSystemPrompt(query, bookHash, {
-                topK: settings.maxContextChunks || 5,
-                spoilerBoundPosition: settings.spoilerProtection ? currentPage : undefined,
-              })
-            : await hybridSearch(
-                bookHash,
-                query,
-                settings,
-                settings.maxContextChunks || 5,
-                settings.spoilerProtection ? currentPage : undefined,
-              );
+          const contextChunks = await getChapterContextChunks(bookHash, currentSectionIndex);
+
+          // Check if current chapter context has relevant content for the user's query
+          const lowerQuery = query.toLowerCase();
+          const matchesInCurrentChapter = contextChunks.filter((c) =>
+            c.text.toLowerCase().includes(lowerQuery),
+          );
 
           const seen = new Set<string>();
           chunks = [];
 
-          // 1. Prioritize search matches across the book (or up to current page if spoiler protection is ON)
-          for (const c of searchChunks) {
-            chunks.push(c);
-            seen.add(c.id);
-          }
-
-          // 2. If search returns no matches, fall back to current chapter context so AI always has relevant reading context
-          if (chunks.length === 0) {
-            const contextChunks = await getChapterContextChunks(bookHash, currentSectionIndex);
+          if (matchesInCurrentChapter.length > 0) {
+            // 1. Found in current chapter: load current chapter context first
             for (const c of contextChunks) {
-              if (!seen.has(c.id)) {
-                chunks.push(c);
-                seen.add(c.id);
+              chunks.push(c);
+              seen.add(c.id);
+            }
+          } else {
+            // 2. Not found in current chapter: search across the full book and load matching passages
+            const searchChunks = backend.searchForSystemPrompt
+              ? await backend.searchForSystemPrompt(query, bookHash, {
+                  topK: settings.maxContextChunks || 5,
+                  spoilerBoundPosition: settings.spoilerProtection ? currentPage : undefined,
+                })
+              : await hybridSearch(
+                  bookHash,
+                  query,
+                  settings,
+                  settings.maxContextChunks || 5,
+                  settings.spoilerProtection ? currentPage : undefined,
+                );
+
+            for (const c of searchChunks) {
+              chunks.push(c);
+              seen.add(c.id);
+            }
+
+            // If full book search also yielded nothing, fall back to current chapter context
+            if (chunks.length === 0) {
+              for (const c of contextChunks) {
+                if (!seen.has(c.id)) {
+                  chunks.push(c);
+                  seen.add(c.id);
+                }
               }
             }
           }
