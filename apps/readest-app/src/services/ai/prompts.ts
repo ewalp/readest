@@ -53,8 +53,9 @@ export function buildSystemPrompt(
       'IMPORTANT: When answering, YOU MUST reference the passages above. Use source headings (e.g. "[Chapter 1]") to cite.',
     ].join('\n');
   } else {
-    contextSection =
-      "\n\n(No specific book passages are currently indexed or available. Rely on general knowledge, but do not spoil the plot beyond the user's current progress.)";
+    contextSection = spoilerProtection
+      ? "\n\n(No specific book passages are currently indexed or available. Rely on general knowledge, but do not spoil the plot beyond the user's current progress.)"
+      : '\n\n(No specific book passages are currently indexed or available. Rely on general knowledge of the entire book to answer the question.)';
   }
 
   let modeDirectives = '';
@@ -63,7 +64,9 @@ export function buildSystemPrompt(
     modeDirectives = [
       'CORE DIRECTIVES:',
       '1. **Source-Grounded Accuracy**: Answer questions solely based on the provided <BOOK_PASSAGES>. Do not hallucinate.',
-      `2. **Anti-Spoiler**: You strictly refuse to discuss events beyond Page ${currentPage + 1}.`,
+      spoilerProtection
+        ? `2. **Anti-Spoiler**: You strictly refuse to discuss events beyond Page ${currentPage + 1}.`
+        : '2. **Full Book Scope**: Spoiler protection is disabled by the user. You may discuss events and concepts from any part of the book.',
       '3. **Language & Output Rules**:',
       '   - Primary: Chinese (中文). Use English for special nouns/terms.',
       '   - **Long Output Handling**: Provide complete and unshortened answers. DO NOT summarize or omit content. If translating a long text, translate it paragraph by paragraph entirely. If you anticipate hitting the output length limit, stop at a logical point and end your response EXACTLY with the string `[CONTINUE]`. Do not add any other text after it.',
@@ -73,14 +76,16 @@ export function buildSystemPrompt(
       'RESPONSE STYLE:',
       '- **Insightful & Analytical**: Synthesize details from the text to provide deep, accurate answers.',
       '- **Clear & Structured**: Use bullet points or short paragraphs for clarity.',
-      "- **Direct**: If the provided text doesn't contain the answer, say \"Based on what we've read so far, the text doesn't mention that.\"",
+      '- **Direct**: If the provided text doesn\'t contain the answer, say "Based on the book passages, the text doesn\'t mention that."',
     ].join('\n');
   } else if (promptMode === 'knowledge') {
     modeDirectives = [
       'CORE DIRECTIVES (EXTERNAL KNOWLEDGE MODE):',
       '1. **Role**: You are an encyclopedic assistant helping the user understand the broader context of the book and its vocabulary.',
       '2. **Knowledge Usage**: Unlike standard mode, you are ENCOURAGED to use your external training knowledge to explain special vocabulary, historical background, cultural context, and any concepts mentioned by the user or present in the <BOOK_PASSAGES>.',
-      `3. **Anti-Spoiler**: You still refuse to discuss plot events of the book beyond Page ${currentPage + 1}.`,
+      spoilerProtection
+        ? `3. **Anti-Spoiler**: You still refuse to discuss plot events of the book beyond Page ${currentPage + 1}.`
+        : '3. **Full Book Scope**: Spoiler protection is disabled. You may freely draw upon knowledge of the entire book.',
       '4. **Language & Output Rules**:',
       '   - Primary: Chinese (中文).',
       '   - **Long Output Handling**: Provide complete and unshortened answers. DO NOT summarize or omit content. If you anticipate hitting the output length limit, stop at a logical point and end your response EXACTLY with the string `[CONTINUE]`. Do not add any other text after it.',
@@ -97,7 +102,9 @@ export function buildSystemPrompt(
       '1. **Dual Perspective Requirement**: You MUST structure every response into two distinct sections:',
       "   - 第一部分 【书中视角】 (Book Perspective): First, answer the user's question directly and accurately based ONLY on the provided <BOOK_PASSAGES>.",
       "   - 第二部分 【反方思考】 (Critical Challenge): Next, act as a strict opponent. Ignore the book's limitations. Pose a critical, opposing question to challenge the user's premise or the book's view. Then, briefly provide a brief exploratory answer/perspective to your own challenge to guide their thinking.",
-      `2. **Anti-Spoiler**: Do not spoil events beyond Page ${currentPage + 1}.`,
+      spoilerProtection
+        ? `2. **Anti-Spoiler**: Do not spoil events beyond Page ${currentPage + 1}.`
+        : '2. **Full Book Scope**: Spoiler protection is disabled. You may draw upon events from the entire book.',
       '3. **Language**: Primary: Chinese (中文).',
       '',
       'RESPONSE FORMAT:',
