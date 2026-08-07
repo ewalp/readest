@@ -28,6 +28,17 @@ vi.mock('@/services/ai/providers', () => ({
   }),
 }));
 
+vi.mock('@/services/ai/storage/aiStore', () => ({
+  aiStore: {
+    saveMessage: vi.fn(async () => {}),
+    saveConversation: vi.fn(async () => {}),
+    getConversations: vi.fn(async () => []),
+    getMessages: vi.fn(async () => []),
+    getChunksForSection: vi.fn(async () => []),
+    hybridSearch: vi.fn(async () => []),
+  },
+}));
+
 // Import after mocks so the adapter picks up the mocked streamText.
 const { createTauriAdapter } = await import('@/services/ai/adapters/TauriChatAdapter');
 
@@ -148,9 +159,18 @@ describe('TauriChatAdapter wiring (M1.11)', () => {
         score: 0.9,
       },
     ];
+    const { useAIChatStore } = await import('@/store/aiChatStore');
+    useAIChatStore.setState({ activeConversationId: 'c1', currentBookHash: 'bk1' });
+
     const backend = fakeLegacy({ searchResult: chunks });
     const adapter = createTauriAdapter(() => ({
-      settings: { ...baseSettings, reedy: { enabled: false }, provider: 'ollama' },
+      settings: {
+        ...baseSettings,
+        reedy: { enabled: false },
+        provider: 'ollama',
+        maxContextChunks: 5,
+        spoilerProtection: false,
+      },
       bookHash: 'bk1',
       bookTitle: 'Title',
       authorName: 'Author',
@@ -170,7 +190,11 @@ describe('TauriChatAdapter wiring (M1.11)', () => {
     expect(streamTextMock).toHaveBeenCalledTimes(1);
     const call = streamTextMock.mock.calls[0]![0] as RunCall;
     expect(call.tools).toBeUndefined();
-    expect(backend.searchForSystemPrompt).toHaveBeenCalled();
+    expect(backend.searchForSystemPrompt).toHaveBeenCalledWith(
+      'rabbit',
+      'bk1',
+      expect.objectContaining({ topK: 5 }),
+    );
     // Source store should be populated with the legacy chunks under the turn id.
     const turnIds = (sourceStore as unknown as { sources: Map<string, unknown[]> }).sources;
     const populatedTurns = [...turnIds.entries()].filter(([, v]) => v.length > 0);

@@ -195,12 +195,10 @@ async function runStreamSingleTurn(
             messages: currentMessages as any,
             abortSignal: bgAbortSignal,
           });
-          let hasChunks = false;
           for await (const chunk of result.textStream) {
             hasChunks = true;
             yield chunk;
           }
-          if (!hasChunks) throw new Error('No content received from stream');
         } catch (streamError) {
           const sErr = streamError as Error;
           const isAbort =
@@ -530,25 +528,33 @@ export function createTauriAdapter(getOptions: () => TauriAdapterOptions): ChatM
 
       const lastUserMessage = [...messages].reverse().find((m) => m.role === 'user');
       const query =
-        lastUserMessage?.content
-          ?.filter((c): c is { type: 'text'; text: string } => c.type === 'text')
-          .map((c) => c.text)
-          .join(' ') || '';
+        typeof lastUserMessage?.content === 'string'
+          ? lastUserMessage.content
+          : Array.isArray(lastUserMessage?.content)
+            ? (lastUserMessage.content as any[])
+                .filter((c) => typeof c === 'string' || c?.type === 'text')
+                .map((c) => (typeof c === 'string' ? c : c.text))
+                .join(' ')
+            : '';
 
       aiLogger.chat.send(query.length, backend?.kind === 'reedy');
 
-      if (backend?.kind === 'legacy-idb' && (await backend.isIndexed(bookHash))) {
+      const isIdx = backend?.isIndexed ? await backend.isIndexed(bookHash) : true;
+      if (backend?.kind === 'legacy-idb' && isIdx) {
         try {
-          const [contextChunks, searchChunks] = await Promise.all([
-            getChapterContextChunks(bookHash, currentSectionIndex),
-            hybridSearch(
-              bookHash,
-              query,
-              settings,
-              settings.maxContextChunks || 5,
-              settings.spoilerProtection ? currentPage : undefined,
-            ),
-          ]);
+          const contextChunks = await getChapterContextChunks(bookHash, currentSectionIndex);
+          const searchChunks = backend.searchForSystemPrompt
+            ? await backend.searchForSystemPrompt(query, bookHash, {
+                topK: settings.maxContextChunks || 5,
+                spoilerBoundPosition: settings.spoilerProtection ? currentPage : undefined,
+              })
+            : await hybridSearch(
+                bookHash,
+                query,
+                settings,
+                settings.maxContextChunks || 5,
+                settings.spoilerProtection ? currentPage : undefined,
+              );
 
           const seen = new Set<string>();
           chunks = [];
@@ -566,6 +572,7 @@ export function createTauriAdapter(getOptions: () => TauriAdapterOptions): ChatM
           aiLogger.chat.context(chunks.length, chunks.map((c) => c.text).join('').length);
           sourceStore.replace(turnId, chunksToRetrieved(chunks));
         } catch (e) {
+          console.error('[TauriAdapter] RAG search error:', e);
           aiLogger.chat.error(`RAG failed: ${(e as Error).message}`);
         }
       }
@@ -601,10 +608,9 @@ export function createTauriAdapter(getOptions: () => TauriAdapterOptions): ChatM
       let activeConversationId = useAIChatStore.getState().activeConversationId;
 
       if (!activeConversationId) {
-        console.log('[TauriAdapter] activeConversationId missing, waiting...');
         let attempts = 0;
         while (!activeConversationId && attempts < 20) {
-          await new Promise((r) => setTimeout(r, 100));
+          await new Promise((r) => setTimeout(r, 10));
           activeConversationId = useAIChatStore.getState().activeConversationId;
           attempts++;
         }
@@ -628,7 +634,7 @@ export function createTauriAdapter(getOptions: () => TauriAdapterOptions): ChatM
         stream.conversationId = activeConversationId;
       }
 
-      if (backend?.kind === 'reedy' && backend.buildLookupTool) {
+      if (settings.reedy?.enabled && backend?.kind === 'reedy' && backend.buildLookupTool) {
         const provider = getAIProvider(settings);
         const tool = backend.buildLookupTool({
           bookHash,
@@ -637,11 +643,13 @@ export function createTauriAdapter(getOptions: () => TauriAdapterOptions): ChatM
           spoilerBoundPosition: settings.spoilerProtection ? currentPage : undefined,
         });
         const reedyPrompt = buildReedySystemPrompt(bookTitle, authorName, currentPage);
+        const { stepCountIs } = await import('ai');
         const result = streamText({
           model: provider.getModel(),
           system: reedyPrompt,
           messages: aiMessages,
           tools: { lookupPassage: tool },
+          stopWhen: stepCountIs(3),
           abortSignal: bgAbortController.signal,
         });
 

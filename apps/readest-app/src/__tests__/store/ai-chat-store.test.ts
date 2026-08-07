@@ -3,11 +3,12 @@ import type { AIConversation, AIMessage } from '@/services/ai/types';
 
 // Mock the aiStore (IndexedDB-backed persistence)
 const mockGetConversations = vi.fn<(bookHash: string) => Promise<AIConversation[]>>();
-const mockGetMessages = vi.fn<(id: string) => Promise<AIMessage[]>>();
+const mockGetMessages = vi.fn<(bookHash: string, id: string) => Promise<AIMessage[]>>();
 const mockSaveConversation = vi.fn<(conv: AIConversation) => Promise<void>>();
-const mockSaveMessage = vi.fn<(msg: AIMessage) => Promise<void>>();
-const mockDeleteConversation = vi.fn<(id: string) => Promise<void>>();
-const mockUpdateConversationTitle = vi.fn<(id: string, title: string) => Promise<void>>();
+const mockSaveMessage = vi.fn<(bookHash: string, msg: AIMessage) => Promise<void>>();
+const mockDeleteConversation = vi.fn<(bookHash: string, id: string) => Promise<void>>();
+const mockUpdateConversationTitle =
+  vi.fn<(bookHash: string, id: string, title: string) => Promise<void>>();
 
 vi.mock('@/services/ai/storage/aiStore', () => ({
   aiStore: {
@@ -128,6 +129,7 @@ describe('aiChatStore', () => {
       ];
       mockGetMessages.mockResolvedValue(msgs);
 
+      useAIChatStore.setState({ currentBookHash: 'book1' });
       await useAIChatStore.getState().setActiveConversation('c1');
 
       const state = useAIChatStore.getState();
@@ -253,7 +255,7 @@ describe('aiChatStore', () => {
       });
 
       expect(mockSaveMessage).toHaveBeenCalledTimes(1);
-      const savedMsg = mockSaveMessage.mock.calls[0]![0];
+      const savedMsg = mockSaveMessage.mock.calls[0]![1];
       expect(savedMsg.content).toBe('Response');
       expect(savedMsg.role).toBe('assistant');
     });
@@ -353,7 +355,7 @@ describe('aiChatStore', () => {
       const state = useAIChatStore.getState();
       expect(state.activeConversationId).toBeNull();
       expect(state.messages).toEqual([]);
-      expect(mockDeleteConversation).toHaveBeenCalledWith('c1');
+      expect(mockDeleteConversation).toHaveBeenCalledWith('book1', 'c1');
     });
 
     test('deletes conversation without clearing active if different one is active', async () => {
@@ -414,7 +416,7 @@ describe('aiChatStore', () => {
 
       await useAIChatStore.getState().renameConversation('c1', 'New Title');
 
-      expect(mockUpdateConversationTitle).toHaveBeenCalledWith('c1', 'New Title');
+      expect(mockUpdateConversationTitle).toHaveBeenCalledWith('book1', 'c1', 'New Title');
       expect(useAIChatStore.getState().conversations).toEqual(updated);
     });
 
