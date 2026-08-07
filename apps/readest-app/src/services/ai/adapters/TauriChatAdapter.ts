@@ -196,7 +196,6 @@ async function runStreamSingleTurn(
             abortSignal: bgAbortSignal,
           });
           for await (const chunk of result.textStream) {
-            hasChunks = true;
             yield chunk;
           }
         } catch (streamError) {
