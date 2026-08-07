@@ -541,7 +541,6 @@ export function createTauriAdapter(getOptions: () => TauriAdapterOptions): ChatM
       const isIdx = backend?.isIndexed ? await backend.isIndexed(bookHash) : true;
       if (backend?.kind === 'legacy-idb' && isIdx) {
         try {
-          const contextChunks = await getChapterContextChunks(bookHash, currentSectionIndex);
           const searchChunks = backend.searchForSystemPrompt
             ? await backend.searchForSystemPrompt(query, bookHash, {
                 topK: settings.maxContextChunks || 5,
@@ -557,14 +556,21 @@ export function createTauriAdapter(getOptions: () => TauriAdapterOptions): ChatM
 
           const seen = new Set<string>();
           chunks = [];
-          for (const c of contextChunks) {
+
+          // 1. Prioritize search matches across the book (or up to current page if spoiler protection is ON)
+          for (const c of searchChunks) {
             chunks.push(c);
             seen.add(c.id);
           }
-          for (const c of searchChunks) {
-            if (!seen.has(c.id)) {
-              chunks.push(c);
-              seen.add(c.id);
+
+          // 2. If search returns no matches, fall back to current chapter context so AI always has relevant reading context
+          if (chunks.length === 0) {
+            const contextChunks = await getChapterContextChunks(bookHash, currentSectionIndex);
+            for (const c of contextChunks) {
+              if (!seen.has(c.id)) {
+                chunks.push(c);
+                seen.add(c.id);
+              }
             }
           }
 
