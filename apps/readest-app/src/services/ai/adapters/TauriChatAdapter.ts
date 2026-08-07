@@ -597,6 +597,40 @@ export function createTauriAdapter(getOptions: () => TauriAdapterOptions): ChatM
         }
       }
 
+      let webSearchContext: string | undefined = undefined;
+
+      // In Encyclopedic Knowledge mode, perform a real-time web search for query context
+      if (options.promptMode === 'knowledge' && query) {
+        try {
+          const searchUrl = `https://html.duckduckgo.com/html/?q=${encodeURIComponent(query)}`;
+          const fetchFn = (await import('../utils/httpFetch')).getAIFetch();
+          const res = await fetchFn(searchUrl, {
+            headers: {
+              'User-Agent':
+                'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+            },
+          });
+          if (res.ok) {
+            const html = await res.text();
+            // Parse snippet entries from DuckDuckGo HTML
+            const snippets: string[] = [];
+            const regex = /<a class="result__snippet[^">]*>([\s\S]*?)<\/a>/g;
+            let match: RegExpExecArray | null;
+            while ((match = regex.exec(html)) !== null && snippets.length < 5) {
+              const cleanText = match[1]!.replace(/<[^>]+>/g, '').trim();
+              if (cleanText) snippets.push(cleanText);
+            }
+            if (snippets.length > 0) {
+              webSearchContext = snippets
+                .map((s, idx) => `[Web Result ${idx + 1}]: ${s}`)
+                .join('\n\n');
+            }
+          }
+        } catch (webErr) {
+          console.warn('[TauriAdapter] Web search fetch failed:', webErr);
+        }
+      }
+
       const systemPrompt = buildSystemPrompt(
         bookTitle,
         authorName,
@@ -606,6 +640,7 @@ export function createTauriAdapter(getOptions: () => TauriAdapterOptions): ChatM
         undefined,
         undefined,
         settings.spoilerProtection ?? true,
+        webSearchContext,
       );
 
       const aiMessages = messages.map((m) => ({
