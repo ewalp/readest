@@ -75,28 +75,35 @@ pub struct ClipOptions {
 }
 
 impl ClipOptions {
+    #[allow(dead_code)]
     fn window_title(&self) -> &str {
         self.window_title
             .as_deref()
             .unwrap_or("Saving to your Readest library…")
     }
+    #[allow(dead_code)]
     fn overlay_title(&self) -> &str {
         self.overlay_title.as_deref().unwrap_or("Saving to Readest")
     }
+    #[allow(dead_code)]
     fn loading_status(&self) -> &str {
         self.loading_status.as_deref().unwrap_or("Loading article…")
     }
+    #[allow(dead_code)]
     fn capturing_status(&self) -> &str {
         self.capturing_status
             .as_deref()
             .unwrap_or("Capturing article…")
     }
+    #[allow(dead_code)]
     fn saved_title(&self) -> &str {
         self.saved_title.as_deref().unwrap_or("Saved to Readest")
     }
+    #[allow(dead_code)]
     fn background(&self) -> &str {
         self.background.as_deref().unwrap_or("#1f2024")
     }
+    #[allow(dead_code)]
     fn foreground(&self) -> &str {
         self.foreground.as_deref().unwrap_or("#f5f5f7")
     }
@@ -105,6 +112,7 @@ impl ClipOptions {
 /// Parse a `#rrggbb` colour string into 8-bit RGB components. Returns
 /// `None` for any malformed input — the caller falls back to whatever
 /// default it had.
+#[allow(dead_code)]
 fn parse_hex_color(s: &str) -> Option<(u8, u8, u8)> {
     let hex = s.trim().trim_start_matches('#');
     if hex.len() != 6 {
@@ -119,6 +127,7 @@ fn parse_hex_color(s: &str) -> Option<(u8, u8, u8)> {
 /// HTML-escape a translated string before inlining it into the bridge
 /// page or the loading overlay's static markup. JS string literals use
 /// `serde_json::to_string` (which already escapes correctly for JS).
+#[allow(dead_code)]
 fn escape_html(s: &str) -> String {
     s.replace('&', "&amp;")
         .replace('<', "&lt;")

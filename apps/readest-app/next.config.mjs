@@ -13,7 +13,7 @@ if (isDev) {
   initOpenNextCloudflareForDev();
 }
 
-const exportOutput = appPlatform !== 'web' && !isDev;
+const exportOutput = (appPlatform && appPlatform !== 'web' && !isDev) || process.env['TAURI_ENV_PLATFORM'] !== undefined;
 // Opt-in standalone output, set only by the Docker production build
 // (Dockerfile). Every other path keeps the original behavior: Tauri `export`,
 // local `build-web` (output undefined), dev, and the Cloudflare/OpenNext
@@ -100,6 +100,7 @@ const nextConfig = {
         ]),
   ],
   async rewrites() {
+    if (exportOutput) return [];
     return [
       {
         source: '/reader/:ids',
@@ -116,6 +117,7 @@ const nextConfig = {
     ];
   },
   async headers() {
+    if (exportOutput) return [];
     return [
       {
         source: '/.well-known/apple-app-site-association',

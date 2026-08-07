@@ -5,6 +5,7 @@
 use semver::Version;
 
 /// Returns the 10-digit nightly stamp if the prerelease is exactly `YYYYMMDDHH`.
+#[allow(dead_code)]
 fn parse_stamp(v: &Version) -> Option<u64> {
     let pre = v.pre.as_str();
     if pre.len() == 10 && pre.bytes().all(|b| b.is_ascii_digit()) {
@@ -15,6 +16,7 @@ fn parse_stamp(v: &Version) -> Option<u64> {
 }
 
 /// Base-aware "is `candidate` newer than `current`?" — see version.ts for the rule.
+#[allow(dead_code)]
 pub fn is_update_newer(candidate: &str, current: &str) -> bool {
     let (c, cur) = match (Version::parse(candidate), Version::parse(current)) {
         (Ok(c), Ok(cur)) => (c, cur),
