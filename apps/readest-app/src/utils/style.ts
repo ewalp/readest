@@ -267,7 +267,7 @@ const getColorStyles = (
       ${overrideColor && !hasBackgroundTexture ? `border-color: ${fg} !important;` : ''}
     }
     pre, span { /* inline code blocks */
-      ${overrideColor ? `background-color: ${bg} !important;` : ''}
+      ${overrideColor && !hasBackgroundTexture ? `background-color: ${bg} !important;` : ''}
     }
     a:any-link {
       ${overrideColor ? `color: ${primary} !important;` : isDarkMode ? `color: lightblue;` : ''}
