@@ -41,20 +41,41 @@ const BUILTIN_POLYPHONE_DICT: Record<string, string> = {
   会计: 'kuài jì',
   会计师: 'kuài jì shī',
   财会: 'cái kuài',
+  做会计: 'zuò kuài jì',
+  高科技行业: 'gāo kē jì háng yè',
+  行业: 'háng yè',
+  这个行业: 'zhè ge háng yè',
+  本行业: 'běn háng yè',
+  同行: 'tóng háng',
+  银行: 'yín háng',
+  行长: 'háng zhǎng',
+  行规: 'háng guī',
+  行话: 'háng huà',
+  行走: 'xíng zǒu',
+  行动: 'xíng dòng',
+  行为: 'xíng wéi',
   重阳: 'chóng yáng',
   重复: 'chóng fù',
   重新: 'chóng xīn',
+  重申: 'chóng shēn',
   重要: 'zhòng yào',
   重心: 'zhòng xīn',
-  银行: 'yín háng',
-  行业: 'háng yè',
-  行走: 'xíng zǒu',
-  行动: 'xíng dòng',
+  重量: 'zhòng liàng',
   音乐: 'yīn yuè',
+  乐曲: 'yuè qǔ',
+  乐队: 'yuè duì',
   乐意: 'lè yì',
+  快乐: 'kuài lè',
   便宜: 'pián yi',
   便当: 'biàn dang',
   便利: 'biàn lì',
+  方便: 'fāng biàn',
+  感觉: 'gǎn jué',
+  觉得: 'jué de',
+  睡觉: 'shuì jiào',
+  差别: 'chā bié',
+  出差: 'chū chāi',
+  参差: 'cēn cī',
 };
 
 /**
@@ -138,18 +159,18 @@ export async function correctSectionWithAI(
       source.setOverride(word, entry);
     }
 
-    // Use streamChat to communicate with the configured provider (OpenAI, DeepSeek, Ollama, etc.)
-    const prompt = `请严格根据上下文语境，排查并纠正以下中文文本中被错误拼读的多音字（如"会计"应为"kuài jì"而非"huì jì"；"重要"应为"zhòng yào"；"重量"为"zhòng liàng"；"重复"为"chóng fù"；"银行"为"yín háng"；"行走"为"xíng zǒu"）或生僻字注音与简释。
+    // Send full section context (up to 4000 characters) to cover the entire chapter
+    const prompt = `请严格根据中文句子的具体语境，排查并纠正以下文本中被错误拼读的多音字（例如："会计"必须为"kuài jì"；"行业/这个行业/高科技行业"必须为"háng yè"；"银行"为"yín háng"；"行走/行动"为"xíng"；"重要/重量"为"zhòng"；"重复/重新"为"chóng"；"做会计"为"zuò kuài jì"）或生僻字注音与简明释义。
 请返回纯 JSON 数组，格式如下：
 [{"word": "词语或字", "pinyin": "精准带声调拼音", "gloss": "简明注解（可选）"}]
 如果无需要纠正的特殊多音字，直接返回 []。请勿输出任何额外文字或 Markdown 标记。
 
 文本内容：
-"${text.slice(0, 1000)}"`;
+"${text.slice(0, 4000)}"`;
 
     let outputText = '';
     const systemPrompt =
-      '你是一个国家级中文语言学审音专家，专门核对中文多音字在具体句子语境下的权威标准读音（例如会计师中的“会”读kuài）。你只输出纯 JSON 数组。';
+      '你是一个国家级中文语言学审音专家，专门核对中文多音字在具体句子语境下的权威标准读音（例如会计师中的“会”读kuài，行业中的“行”读háng）。你只输出纯 JSON 数组。';
 
     const chatProvider = provider as {
       streamChat?(
