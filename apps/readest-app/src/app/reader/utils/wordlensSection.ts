@@ -80,8 +80,34 @@ export const refreshSectionGlosses = async (
     if (!source || !canTokenizeSource(source)) return;
     const hint = (viewSettings.wordLensHintLang || ctx.appLang).toLowerCase().split('-')[0] || '';
     if (!hint) return;
-    // Same-language packs (e.g. en-en monolingual) are allowed; availability is
-    // decided by the manifest — loadGlossIndex returns null when no pack exists.
+
+    const level = viewSettings.wordLensLevel ?? 3;
+    const sectionIndex =
+      ctx.sectionIndex !== undefined
+        ? String(ctx.sectionIndex)
+        : (doc.defaultView?.frameElement as Element | undefined)?.getAttribute?.('data-index') ||
+          doc.location?.pathname ||
+          doc.location?.href ||
+          '0';
+
+    // 1. FAST PATH: If already cached in IndexedDB, apply immediately in 0ms without loading gloss packs or segmenters!
+    if (ctx.bookKey) {
+      try {
+        const { wordLensDB } = await import('@/services/wordlens/wordlensDB');
+        const cached = await wordLensDB.getSectionGlosses(ctx.bookKey, sectionIndex, level);
+        if (cached && cached.length) {
+          if (refreshGen.get(doc) === myGen) {
+            const model = buildSectionTextModel(doc);
+            applyGlosses(doc, model, cached);
+          }
+          return; // Instant 0ms return from local database cache!
+        }
+      } catch {
+        // Fallback to initial calculation if DB read fails
+      }
+    }
+
+    // 2. SLOW PATH (First load only): Load dictionary pack / Jieba / AI source
     let index: GlossSource | null = await loadGlossIndex(ctx.appService, source, hint, {
       onProgress: ctx.onProgress,
       allowDownload: ctx.allowDownload,
@@ -93,30 +119,6 @@ export const refreshSectionGlosses = async (
     }
     if (!index) return;
     const model = buildSectionTextModel(doc);
-    const sectionIndex =
-      ctx.sectionIndex !== undefined
-        ? String(ctx.sectionIndex)
-        : (doc.defaultView?.frameElement as Element | undefined)?.getAttribute?.('data-index') ||
-          doc.location?.pathname ||
-          doc.location?.href ||
-          '0';
-    const level = viewSettings.wordLensLevel ?? 3;
-
-    // 1. Try reading directly from local IndexedDB cache first!
-    if (ctx.bookKey) {
-      try {
-        const { wordLensDB } = await import('@/services/wordlens/wordlensDB');
-        const cached = await wordLensDB.getSectionGlosses(ctx.bookKey, sectionIndex, level);
-        if (cached && cached.length) {
-          if (refreshGen.get(doc) === myGen) {
-            applyGlosses(doc, model, cached);
-          }
-          return; // Instant 0ms return from local database cache!
-        }
-      } catch {
-        // Fallback to calculation if DB read fails
-      }
-    }
 
     // 2. Local calculation via pinyin-pro / index (ensure Jieba is initialized for accurate Chinese segmentation)
     if (source === 'zh' && !isJiebaReady()) {
