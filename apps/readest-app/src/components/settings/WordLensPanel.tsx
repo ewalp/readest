@@ -429,16 +429,20 @@ const WordLensPanel: React.FC<WordLensPanelProps> = ({ bookKey, onBack }) => {
                   const foliateView = (
                     window as unknown as {
                       __foliateView?: {
-                        renderer?: { getContents?: () => Array<{ doc?: Document }> };
+                        renderer?: {
+                          getContents?: () => Array<{ doc?: Document; index?: number }>;
+                        };
                       };
                     }
                   ).__foliateView;
                   const contents = foliateView?.renderer?.getContents?.() || [];
-                  for (const { doc } of contents) {
+                  for (const { doc, index } of contents) {
                     if (doc && appService) {
                       clearGlosses(doc);
                       void refreshSectionGlosses(doc, viewSettings, {
                         appService,
+                        bookKey,
+                        sectionIndex: index,
                         bookLang: bookData?.book?.primaryLanguage,
                         appLang,
                       });
@@ -489,12 +493,14 @@ const WordLensPanel: React.FC<WordLensPanelProps> = ({ bookKey, onBack }) => {
                     const foliateView = (
                       window as unknown as {
                         __foliateView?: {
-                          renderer?: { getContents?: () => Array<{ doc?: Document }> };
+                          renderer?: {
+                            getContents?: () => Array<{ doc?: Document; index?: number }>;
+                          };
                         };
                       }
                     ).__foliateView;
                     const contents = foliateView?.renderer?.getContents?.() || [];
-                    for (const { doc } of contents) {
+                    for (const { doc, index } of contents) {
                       if (doc) {
                         const { buildSectionTextModel } = await import(
                           '@/app/reader/utils/wordlensRuby'
@@ -519,6 +525,25 @@ const WordLensPanel: React.FC<WordLensPanelProps> = ({ bookKey, onBack }) => {
                             }
                           }
                         });
+
+                        // Persist AI corrected annotations back to local DB cache
+                        const { planGlosses } = await import('@/services/wordlens/planner');
+                        const { getRankCutoff } = await import('@/services/wordlens/difficulty');
+                        const { wordLensDB } = await import('@/services/wordlens/wordlensDB');
+                        const level = viewSettings.wordLensLevel ?? 3;
+                        const sectionKey = index !== undefined ? String(index) : '0';
+                        const updatedOcc = planGlosses(model.text, source, {
+                          sourceLang: 'zh',
+                          rankCutoff: getRankCutoff('zh', level),
+                        });
+                        if (updatedOcc.length) {
+                          await wordLensDB.saveSectionGlosses(
+                            bookKey,
+                            sectionKey,
+                            level,
+                            updatedOcc,
+                          );
+                        }
                       }
                     }
 

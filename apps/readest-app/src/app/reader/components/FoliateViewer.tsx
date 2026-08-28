@@ -983,9 +983,8 @@ const FoliateViewer: React.FC<{
     if (isFixedLayout) return;
     // A settings change is the moment a fresh download may start; let the
     // one-time "Downloading…" toast fire again for it.
-    wordLensToastShownRef.current = false;
-    for (const { doc } of contents) {
-      if (doc) void refreshSectionGlosses(doc, vs, buildWordLensCtx(bookLang));
+    for (const { doc, index } of contents) {
+      if (doc) void refreshSectionGlosses(doc, vs, buildWordLensCtx(bookLang, index));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [viewSettings?.wordLensEnabled, viewSettings?.wordLensLevel, viewSettings?.wordLensHintLang]);
