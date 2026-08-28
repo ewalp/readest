@@ -537,7 +537,7 @@ const FoliateViewer: React.FC<{
     // Fixed-layout (pre-paginated) books have no reflow room; injecting ruby
     // would overflow their fixed boxes, so skip Word Lens glosses there.
     const isFixedLayout = bookDoc.rendition?.layout === 'pre-paginated';
-    for (const { doc } of contents) {
+    for (const { doc, index } of contents) {
       if (doc) {
         const hasPending = doc.querySelectorAll('.warichu-pending').length > 0;
         const hasExisting = doc.querySelectorAll('.warichu-head').length > 0;
@@ -547,7 +547,7 @@ const FoliateViewer: React.FC<{
           relayoutWarichu(doc);
         }
         if (vs && appService && !isFixedLayout) {
-          void refreshSectionGlosses(doc, vs, buildWordLensCtx(bookLang));
+          void refreshSectionGlosses(doc, vs, buildWordLensCtx(bookLang, index));
         }
       }
     }

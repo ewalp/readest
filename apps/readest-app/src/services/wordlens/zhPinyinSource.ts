@@ -36,6 +36,27 @@ function getZhRank(word: string): number {
   return 9000;
 }
 
+// Built-in standard dictionary for high-frequency Chinese polyphones and idioms
+const BUILTIN_POLYPHONE_DICT: Record<string, string> = {
+  会计: 'kuài jì',
+  会计师: 'kuài jì shī',
+  财会: 'cái kuài',
+  重阳: 'chóng yáng',
+  重复: 'chóng fù',
+  重新: 'chóng xīn',
+  重要: 'zhòng yào',
+  重心: 'zhòng xīn',
+  银行: 'yín háng',
+  行业: 'háng yè',
+  行走: 'xíng zǒu',
+  行动: 'xíng dòng',
+  音乐: 'yīn yuè',
+  乐意: 'lè yì',
+  便宜: 'pián yi',
+  便当: 'biàn dang',
+  便利: 'biàn lì',
+};
+
 /**
  * In-memory Chinese GlossSource powered by `pinyin-pro` with context-aware polyphone support
  * and dynamic AI override correction cache.
@@ -57,7 +78,7 @@ export class DynamicZhPinyinSource implements GlossSource {
     const rank = getZhRank(word);
     const override = this.#overrides.get(word);
 
-    // If AI provided an override for this word/polyphone
+    // 1. Check AI override cache
     if (override) {
       return {
         rank,
@@ -66,8 +87,18 @@ export class DynamicZhPinyinSource implements GlossSource {
       };
     }
 
-    // Fallback to pinyin-pro
-    const py = pinyin(word, { toneType: 'symbol', type: 'string' });
+    // 2. Check built-in standard polyphone dictionary
+    const dictPinyin = BUILTIN_POLYPHONE_DICT[word];
+    if (dictPinyin) {
+      return {
+        rank,
+        gloss: '',
+        pinyin: dictPinyin,
+      };
+    }
+
+    // 3. Fallback to pinyin-pro with surname/polyphone awareness
+    const py = pinyin(word, { toneType: 'symbol', type: 'string', multiple: false });
     if (!py) return null;
 
     return {
@@ -108,17 +139,17 @@ export async function correctSectionWithAI(
     }
 
     // Use streamChat to communicate with the configured provider (OpenAI, DeepSeek, Ollama, etc.)
-    const prompt = `请排查以下中文文本中的特定语境多音字或生僻字注音与简明释义。
-仅针对有特定语境多音字（如"重要(zhòng)","行走(xíng)","重合(chóng)"）或生字返回纯 JSON 数组，格式如下：
-[{"word": "词语或字", "pinyin": "带声调拼音", "gloss": "简明注解（可选）"}]
-如果无需要纠正的特殊多音字，直接返回 []。请勿输出任何 Markdown 格式或多余文字。
+    const prompt = `请严格根据上下文语境，排查并纠正以下中文文本中被错误拼读的多音字（如"会计"应为"kuài jì"而非"huì jì"；"重要"应为"zhòng yào"；"重量"为"zhòng liàng"；"重复"为"chóng fù"；"银行"为"yín háng"；"行走"为"xíng zǒu"）或生僻字注音与简释。
+请返回纯 JSON 数组，格式如下：
+[{"word": "词语或字", "pinyin": "精准带声调拼音", "gloss": "简明注解（可选）"}]
+如果无需要纠正的特殊多音字，直接返回 []。请勿输出任何额外文字或 Markdown 标记。
 
 文本内容：
 "${text.slice(0, 1000)}"`;
 
     let outputText = '';
     const systemPrompt =
-      '你是一个严谨的中文语言学专家，专门核对中文多音字在具体语境下的正确拼音和简注。你只输出纯 JSON 数组。';
+      '你是一个国家级中文语言学审音专家，专门核对中文多音字在具体句子语境下的权威标准读音（例如会计师中的“会”读kuài）。你只输出纯 JSON 数组。';
 
     const chatProvider = provider as {
       streamChat?(
