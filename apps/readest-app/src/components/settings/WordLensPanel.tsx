@@ -510,39 +510,20 @@ const WordLensPanel: React.FC<WordLensPanelProps> = ({ bookKey, onBack }) => {
                           getAIProvider(aiSettings),
                         );
 
-                        // In-place update without rebuilding the DOM
-                        const rubies = doc.querySelectorAll('ruby.wl-gloss');
-                        rubies.forEach((ruby: Element) => {
-                          const wordNode = ruby.firstChild;
-                          const word = wordNode?.textContent?.trim() || '';
-                          const entry = source.lookup(word);
-                          if (entry && entry.pinyin) {
-                            const rt = ruby.querySelector('rt');
-                            if (rt) {
-                              rt.textContent = entry.gloss
-                                ? `${entry.pinyin} · ${entry.gloss}`
-                                : entry.pinyin;
-                            }
-                          }
-                        });
-
-                        // Persist AI corrected annotations back to local DB cache
-                        const { planGlosses } = await import('@/services/wordlens/planner');
-                        const { getRankCutoff } = await import('@/services/wordlens/difficulty');
-                        const { wordLensDB } = await import('@/services/wordlens/wordlensDB');
-                        const level = viewSettings.wordLensLevel ?? 3;
-                        const sectionKey = index !== undefined ? String(index) : '0';
-                        const updatedOcc = planGlosses(model.text, source, {
-                          sourceLang: 'zh',
-                          rankCutoff: getRankCutoff('zh', level),
-                        });
-                        if (updatedOcc.length) {
-                          await wordLensDB.saveSectionGlosses(
+                        // Re-render glosses with AI corrected source to merge split single characters into full multi-char words
+                        const { clearGlosses } = await import('@/app/reader/utils/wordlensRuby');
+                        const { refreshSectionGlosses } = await import(
+                          '@/app/reader/utils/wordlensSection'
+                        );
+                        clearGlosses(doc);
+                        if (appService) {
+                          await refreshSectionGlosses(doc, viewSettings, {
+                            appService,
                             bookKey,
-                            sectionKey,
-                            level,
-                            updatedOcc,
-                          );
+                            sectionIndex: index,
+                            bookLang: bookData?.book?.primaryLanguage,
+                            appLang,
+                          });
                         }
                       }
                     }
