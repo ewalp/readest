@@ -50,6 +50,23 @@ describe('planGlosses (Chinese)', () => {
     expect(occ).toEqual([{ start: 2, end: 4, word: '斟酌', gloss: 'to consider' }]);
     expect(text.slice(2, 4)).toBe('斟酌');
   });
+
+  it('formats gloss with pinyin when available in entry', () => {
+    const pinyinSource: GlossSource = {
+      lookup(word) {
+        if (word === '饕餮') return { rank: 15000, gloss: '传说中的凶兽', pinyin: 'tāo tiè' };
+        return null;
+      },
+    };
+    const text = '遇到饕餮';
+    const cutZh = () => ['遇到', '饕餮'];
+    const occ = planGlosses(text, pinyinSource, {
+      sourceLang: 'zh',
+      rankCutoff: 7000,
+      cutZh,
+    });
+    expect(occ).toEqual([{ start: 2, end: 4, word: '饕餮', gloss: 'tāo tiè · 传说中的凶兽' }]);
+  });
 });
 
 describe('planGlosses derivational reduction (English source)', () => {

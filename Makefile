@@ -8,10 +8,13 @@ help:
 	@echo "  make dev-macos      - Build and run macOS app"
 	@echo "  make check          - Run formatting, clippy and unit tests"
 
-build-dmg:
+clean-bundle:
+	rm -rf target/universal-apple-darwin/release/bundle/dmg/
+
+build-dmg: clean-bundle
 	pnpm --filter @readest/readest-app build-macos-universial
 
-build-android:
+build-android: clean-bundle
 	pnpm --filter @readest/readest-app tauri android build -t aarch64
 
 dev-android:

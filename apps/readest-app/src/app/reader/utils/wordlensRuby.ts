@@ -83,23 +83,24 @@ export const applyGlosses = (
   model: SectionTextModel,
   occurrences: GlossOccurrence[],
 ): void => {
+  if (!occurrences.length) return;
   const sorted = [...occurrences].sort((a, b) => b.start - a.start);
   for (const occ of sorted) {
     const range = occurrenceRange(doc, model, occ);
     if (!range) continue;
-    const ruby = doc.createElement('ruby');
-    ruby.className = GLOSS_CLASS;
-    ruby.setAttribute('cfi-skip', '');
-    const rt = doc.createElement('rt');
-    rt.setAttribute('cfi-inert', '');
-    rt.textContent = occ.gloss;
     try {
+      const ruby = doc.createElement('ruby');
+      ruby.className = GLOSS_CLASS;
+      ruby.setAttribute('cfi-skip', '');
+      const rt = doc.createElement('rt');
+      rt.setAttribute('cfi-inert', '');
+      rt.textContent = occ.gloss;
       const word = range.extractContents();
       ruby.appendChild(word);
       ruby.appendChild(rt);
       range.insertNode(ruby);
     } catch {
-      // Range became invalid (concurrent mutation); skip this one.
+      // Range became invalid; skip safely
     }
   }
 };

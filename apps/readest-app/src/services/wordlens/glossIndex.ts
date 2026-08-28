@@ -12,8 +12,8 @@ export class GlossIndex implements GlossSource {
 
   static fromData(data: GlossIndexData): GlossIndex {
     const entries = new Map<string, GlossEntry>();
-    for (const [word, { r, g }] of Object.entries(data.entries)) {
-      entries.set(word.toLowerCase(), { rank: r, gloss: g });
+    for (const [word, { r, g, p }] of Object.entries(data.entries)) {
+      entries.set(word.toLowerCase(), { rank: r, gloss: g, ...(p ? { pinyin: p } : {}) });
     }
     const inflections = new Map<string, string>();
     for (const [form, lemma] of Object.entries(data.inflections)) {

@@ -6,7 +6,7 @@ import { useBookDataStore } from '@/store/bookDataStore';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useTranslation } from '@/hooks/useTranslation';
 import { saveViewSettings } from '@/helpers/settings';
-import { getLocale } from '@/utils/misc';
+import { getLocale, isCJKEnv } from '@/utils/misc';
 import { formatBytes } from '@/utils/book';
 import { eventDispatcher } from '@/utils/event';
 import { TRANSLATED_LANGS } from '@/services/constants';
@@ -134,12 +134,12 @@ const WordLensPanel: React.FC<WordLensPanelProps> = ({ bookKey, onBack }) => {
 
   const getHintLangOptions = () => {
     const entries = Object.entries(TRANSLATED_LANGS).map(([value, label]) => ({ value, label }));
-    // When the manifest is available, restrict to the targets it offers for the
-    // book's source language (matching the resolvable packs). Without a manifest
-    // we show the full list so the selector stays usable offline.
+    // When the manifest is available, restrict to targets it offers (or zh for Chinese books)
+    const targetsWithZh =
+      bookSource === 'zh' ? [...new Set([...availableTargets, 'zh'])] : availableTargets;
     const filtered =
-      availableTargets.length > 0
-        ? entries.filter((o) => availableTargets.includes(baseCode(o.value)))
+      targetsWithZh.length > 0
+        ? entries.filter((o) => targetsWithZh.includes(baseCode(o.value)))
         : entries;
     filtered.sort((a, b) => a.label.localeCompare(b.label));
     return [{ value: '', label: _('Auto') }, ...filtered];
@@ -262,7 +262,11 @@ const WordLensPanel: React.FC<WordLensPanelProps> = ({ bookKey, onBack }) => {
       return (
         <SettingsRow
           label={_('Data pack')}
-          description={_('No data available for this language pair yet.')}
+          description={
+            bookSource === 'zh'
+              ? _('Built-in dynamic pinyin & Chinese gloss engine active.')
+              : _('No data available for this language pair yet.')
+          }
         />
       );
     }
@@ -400,6 +404,143 @@ const WordLensPanel: React.FC<WordLensPanelProps> = ({ bookKey, onBack }) => {
 
       <BoxedList title={_('Data')}>
         {renderDataPackRow()}
+        {(bookSource === 'zh' || !bookSource || isCJKEnv()) && (
+          <>
+            <SettingsRow
+              label={_('全本注音生成')}
+              description={_('清空旧缓存并使用本地极速引擎为本书当前级别生成最新注音与释义')}
+              disabled={!wordLensEnabled}
+            >
+              <button
+                type='button'
+                disabled={!wordLensEnabled}
+                onClick={async () => {
+                  eventDispatcher.dispatch('toast', {
+                    type: 'info',
+                    message: _('正在清空旧缓存并重新生成全本注音...'),
+                  });
+                  const { wordLensDB } = await import('@/services/wordlens/wordlensDB');
+                  await wordLensDB.clearBook(bookKey);
+
+                  const { refreshSectionGlosses } = await import(
+                    '@/app/reader/utils/wordlensSection'
+                  );
+                  const { clearGlosses } = await import('@/app/reader/utils/wordlensRuby');
+                  const foliateView = (
+                    window as unknown as {
+                      __foliateView?: {
+                        renderer?: { getContents?: () => Array<{ doc?: Document }> };
+                      };
+                    }
+                  ).__foliateView;
+                  const contents = foliateView?.renderer?.getContents?.() || [];
+                  for (const { doc } of contents) {
+                    if (doc && appService) {
+                      clearGlosses(doc);
+                      void refreshSectionGlosses(doc, viewSettings, {
+                        appService,
+                        bookLang: bookData?.book?.primaryLanguage,
+                        appLang,
+                      });
+                    }
+                  }
+                  setTimeout(() => {
+                    eventDispatcher.dispatch('toast', {
+                      type: 'success',
+                      message: _('全本注音与释义刷新完成！'),
+                    });
+                  }, 500);
+                }}
+                className='btn btn-contrast btn-sm shrink-0'
+              >
+                {_('生成/刷新')}
+              </button>
+            </SettingsRow>
+            <SettingsRow
+              label={_('AI 注音优化')}
+              description={_('使用配置的 AI 大模型对当前及全书多音字进行语境校对并就地持久化')}
+              disabled={!wordLensEnabled}
+            >
+              <button
+                type='button'
+                disabled={!wordLensEnabled}
+                onClick={async () => {
+                  eventDispatcher.dispatch('toast', {
+                    type: 'info',
+                    message: _('正在启动 AI 语境多音字校对...'),
+                  });
+
+                  try {
+                    const { useSettingsStore } = await import('@/store/settingsStore');
+                    const { getAIProvider } = await import('@/services/ai/providers');
+                    const { correctSectionWithAI, DynamicZhPinyinSource } = await import(
+                      '@/services/wordlens/zhPinyinSource'
+                    );
+                    const aiSettings = useSettingsStore.getState().settings?.aiSettings;
+                    if (!aiSettings?.enabled) {
+                      eventDispatcher.dispatch('toast', {
+                        type: 'warning',
+                        message: _('请先在设置中启用并配置 AI 服务'),
+                      });
+                      return;
+                    }
+
+                    const source = new DynamicZhPinyinSource();
+                    const foliateView = (
+                      window as unknown as {
+                        __foliateView?: {
+                          renderer?: { getContents?: () => Array<{ doc?: Document }> };
+                        };
+                      }
+                    ).__foliateView;
+                    const contents = foliateView?.renderer?.getContents?.() || [];
+                    for (const { doc } of contents) {
+                      if (doc) {
+                        const { buildSectionTextModel } = await import(
+                          '@/app/reader/utils/wordlensRuby'
+                        );
+                        const model = buildSectionTextModel(doc);
+                        await correctSectionWithAI(model.text, source, () =>
+                          getAIProvider(aiSettings),
+                        );
+
+                        // In-place update without rebuilding the DOM
+                        const rubies = doc.querySelectorAll('ruby.wl-gloss');
+                        rubies.forEach((ruby: Element) => {
+                          const wordNode = ruby.firstChild;
+                          const word = wordNode?.textContent?.trim() || '';
+                          const entry = source.lookup(word);
+                          if (entry && entry.pinyin) {
+                            const rt = ruby.querySelector('rt');
+                            if (rt) {
+                              rt.textContent = entry.gloss
+                                ? `${entry.pinyin} · ${entry.gloss}`
+                                : entry.pinyin;
+                            }
+                          }
+                        });
+                      }
+                    }
+
+                    eventDispatcher.dispatch('toast', {
+                      type: 'success',
+                      message: _('AI 多音字校对完成并已就地更新！'),
+                    });
+                  } catch (e) {
+                    console.error('AI correction failed:', e);
+                    eventDispatcher.dispatch('toast', {
+                      type: 'error',
+                      message: _('AI 校对失败，请检查网络或模型配置'),
+                    });
+                  }
+                }}
+                className='btn btn-ghost btn-sm eink-bordered shrink-0'
+              >
+                {_('AI 优化')}
+              </button>
+            </SettingsRow>
+          </>
+        )}
         <SettingsSwitchRow
           label={_('Auto-download')}
           checked={autoDownload}

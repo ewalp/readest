@@ -4,7 +4,7 @@ import type { AppService } from '@/types/system';
 import type { ProgressHandler } from '@/utils/transfer';
 import { webDownload } from '@/utils/transfer';
 import { GlossIndex } from './glossIndex';
-import type { GlossIndexData } from './types';
+import type { GlossIndexData, GlossSource } from './types';
 
 export const WORDLENS_CDN_BASE = 'https://cdn.readest.com/wordlens';
 const STORE_DIR = 'wordlens'; // relative dir under BaseDir 'Data'
@@ -128,7 +128,7 @@ export const listAvailableTargets = (manifest: WordLensManifest | null, source: 
 let manifestPromise: Promise<WordLensManifest | null> | null = null;
 
 // Module-level lazy cache: one resolved GlossIndex per pair per session.
-const indexCache = new Map<string, Promise<GlossIndex | null>>();
+const indexCache = new Map<string, Promise<GlossSource | null>>();
 
 const readPersistedManifest = async (appService: AppService): Promise<WordLensManifest | null> => {
   try {
@@ -275,7 +275,7 @@ export const loadGlossIndex = async (
   source: string,
   hint: string,
   opts?: { onProgress?: ProgressHandler; download?: BytesDownloader; allowDownload?: boolean },
-): Promise<GlossIndex | null> => {
+): Promise<GlossSource | null> => {
   const key = `${source}-${hint}`;
   const existing = indexCache.get(key);
   if (existing) return existing;

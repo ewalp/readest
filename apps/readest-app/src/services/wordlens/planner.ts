@@ -17,10 +17,8 @@ export interface PlanOptions {
   monolingual?: boolean;
 }
 
-// A foliate "section" is usually a whole chapter, so this is a per-chapter bound:
-// high enough to fully gloss a normal chapter, low enough to protect against a
-// pathological single-section book (e.g. a whole novel in one HTML file).
-const DEFAULT_CAP = 2000;
+// A foliate "section" is usually a whole chapter: 0 means unlimited (no truncation).
+const DEFAULT_CAP = 0;
 
 interface Token {
   word: string;
@@ -42,15 +40,24 @@ const tokenizeLatin = (text: string): Token[] => {
 // Chinese: jieba segments cover the text in order; walk a cursor to recover
 // offsets. Segments that aren't found at/after the cursor (whitespace it
 // dropped, etc.) are skipped without stalling.
-const tokenizeChinese = (text: string, cutZh: (t: string) => string[]): Token[] => {
+const tokenizeChinese = (text: string, cutZh?: (t: string) => string[]): Token[] => {
   const tokens: Token[] = [];
-  let cursor = 0;
-  for (const seg of cutZh(text)) {
-    if (!seg) continue;
-    const at = text.indexOf(seg, cursor);
-    if (at === -1) continue;
-    tokens.push({ word: seg, start: at, end: at + seg.length });
-    cursor = at + seg.length;
+  if (cutZh) {
+    let cursor = 0;
+    for (const seg of cutZh(text)) {
+      if (!seg) continue;
+      const at = text.indexOf(seg, cursor);
+      if (at === -1) continue;
+      tokens.push({ word: seg, start: at, end: at + seg.length });
+      cursor = at + seg.length;
+    }
+    return tokens;
+  }
+  // Fallback: character-by-character tokenization for Chinese
+  const re = /[\u4e00-\u9fa5]/g;
+  let m: RegExpExecArray | null;
+  while ((m = re.exec(text))) {
+    tokens.push({ word: m[0], start: m.index, end: m.index + m[0].length });
   }
   return tokens;
 };
@@ -62,12 +69,7 @@ export const planGlosses = (
 ): GlossOccurrence[] => {
   if (!text) return [];
   const cap = opts.maxOccurrences ?? DEFAULT_CAP;
-  const tokens =
-    opts.sourceLang === 'zh'
-      ? opts.cutZh
-        ? tokenizeChinese(text, opts.cutZh)
-        : []
-      : tokenizeLatin(text);
+  const tokens = opts.sourceLang === 'zh' ? tokenizeChinese(text, opts.cutZh) : tokenizeLatin(text);
 
   const occurrences: GlossOccurrence[] = [];
   for (const t of tokens) {
@@ -81,14 +83,19 @@ export const planGlosses = (
     ) {
       continue;
     }
+    const rawGloss = cleanGloss(entry.gloss, opts.monolingual);
+    const finalGloss = entry.pinyin
+      ? rawGloss
+        ? `${entry.pinyin} · ${rawGloss}`
+        : entry.pinyin
+      : rawGloss;
     occurrences.push({
       start: t.start,
       end: t.end,
       word: t.word,
-      gloss: cleanGloss(entry.gloss, opts.monolingual),
+      gloss: finalGloss,
     });
-    if (occurrences.length >= cap) {
-      console.warn(`[wordlens] occurrence cap (${cap}) hit; some hints omitted`);
+    if (cap && occurrences.length >= cap) {
       break;
     }
   }

@@ -10,6 +10,8 @@ export interface GlossEntry {
   rank: number;
   /** Short native-language hint shown above the word. */
   gloss: string;
+  /** Pinyin annotation for Chinese words/characters, e.g. "tāo tiè". */
+  pinyin?: string;
 }
 
 /** Anything the planner can ask "is this word difficult, and what's its gloss?". */
@@ -33,8 +35,8 @@ export interface GlossOccurrence {
 /** On-disk shape of a downloaded gloss pack (data/wordlens/<pair>.json, served from R2). */
 export interface GlossIndexData {
   meta: { source: string; target: string; metric: string; version: number; count: number };
-  /** headword -> { r: rank, g: gloss }. Compact keys to shrink the asset. */
-  entries: Record<string, { r: number; g: string }>;
+  /** headword -> { r: rank, g: gloss, p?: pinyin }. Compact keys to shrink the asset. */
+  entries: Record<string, { r: number; g: string; p?: string }>;
   /** inflected form -> lemma, e.g. { running: "run" }. */
   inflections: Record<string, string>;
 }

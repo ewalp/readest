@@ -798,13 +798,20 @@ const getRubyStyles = (viewSettings: ViewSettings) => {
   }
   ruby.wl-gloss {
     cursor: help;
+    ruby-position: over;
+    ruby-align: center;
+    display: inline-ruby;
+    text-indent: 0;
   }
   ruby.wl-gloss > rt {
     font-size: ${fontSize}em;
-    line-height: 1.1;
-    ${color ? `color: ${color};\n    opacity: 1;` : 'opacity: 0.7;'}
+    line-height: 1;
+    ${color ? `color: ${color};\n    opacity: 1;` : 'opacity: 0.75;'}
     font-weight: normal;
     text-align: center;
+    transform: translateY(-0.18em);
+    margin-bottom: 0.1em;
+    letter-spacing: 0;
   }
 `;
 };

@@ -530,9 +530,9 @@ export function createTauriAdapter(getOptions: () => TauriAdapterOptions): ChatM
         typeof lastUserMessage?.content === 'string'
           ? lastUserMessage.content
           : Array.isArray(lastUserMessage?.content)
-            ? (lastUserMessage.content as any[])
+            ? (lastUserMessage.content as Array<string | { type?: string; text?: string }>)
                 .filter((c) => typeof c === 'string' || c?.type === 'text')
-                .map((c) => (typeof c === 'string' ? c : c.text))
+                .map((c) => (typeof c === 'string' ? c : c.text || ''))
                 .join(' ')
             : '';
 
@@ -597,7 +597,7 @@ export function createTauriAdapter(getOptions: () => TauriAdapterOptions): ChatM
         }
       }
 
-      let webSearchContext: string | undefined = undefined;
+      let webSearchContext: string | undefined;
 
       // In Encyclopedic Knowledge mode, perform a real-time web search for query context
       if (options.promptMode === 'knowledge' && query) {

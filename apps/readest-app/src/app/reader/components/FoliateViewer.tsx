@@ -403,6 +403,16 @@ const FoliateViewer: React.FC<{
         manageSyntaxHighlighting(detail.doc, viewSettings);
       }
 
+      // Trigger immediate Word Lens gloss rendering on section doc load
+      if (viewSettings?.wordLensEnabled && appService && !bookData?.isFixedLayout) {
+        const bookLang = bookData.book?.primaryLanguage;
+        void refreshSectionGlosses(
+          detail.doc,
+          viewSettings,
+          buildWordLensCtx(bookLang, detail.index),
+        );
+      }
+
       setTimeout(() => {
         const sectionIndex = detail.index;
         const booknotes = config.booknotes || [];
@@ -479,7 +489,7 @@ const FoliateViewer: React.FC<{
   // lives in the Word Lens settings panel). `wordLensToastShownRef` de-dupes the
   // toast across the multiple section docs a refresh pass touches.
   const wordLensToastShownRef = useRef(false);
-  const buildWordLensCtx = (bookLang?: string | null) => {
+  const buildWordLensCtx = (bookLang?: string | null, sectionIndex?: number | string) => {
     // Read the live setting (not the first-render `settings` snapshot closed over
     // by the empty-deps `stabilizedHandler`) so toggling Auto-download mid-session
     // takes effect on the next section refresh.
@@ -488,6 +498,8 @@ const FoliateViewer: React.FC<{
       (liveSettings.globalReadSettings.wordLensAutoDownload ?? true) && !isMetered();
     return {
       appService: appService!,
+      bookKey,
+      sectionIndex,
       bookLang,
       appLang: getLocale().split('-')[0] || 'en',
       allowDownload,
