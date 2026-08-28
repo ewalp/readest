@@ -73,8 +73,6 @@ export const refreshSectionGlosses = async (
 
     const myGen = (refreshGen.get(doc) ?? 0) + 1;
     refreshGen.set(doc, myGen);
-    clearGlosses(doc);
-    appliedLevelMap.set(doc, viewSettings.wordLensLevel ?? 3);
 
     const source = toWordLensSource(ctx.bookLang);
     if (!source || !canTokenizeSource(source)) return;
@@ -97,8 +95,10 @@ export const refreshSectionGlosses = async (
         const cached = await wordLensDB.getSectionGlosses(ctx.bookKey, sectionIndex, level);
         if (cached && cached.length) {
           if (refreshGen.get(doc) === myGen) {
+            clearGlosses(doc);
             const model = buildSectionTextModel(doc);
             applyGlosses(doc, model, cached);
+            appliedLevelMap.set(doc, level);
           }
           return; // Instant 0ms return from local database cache!
         }
