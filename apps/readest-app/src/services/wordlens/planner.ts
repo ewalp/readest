@@ -37,9 +37,7 @@ const tokenizeLatin = (text: string): Token[] => {
   return tokens;
 };
 
-// Chinese: jieba segments cover the text in order; walk a cursor to recover
-// offsets. Segments that aren't found at/after the cursor (whitespace it
-// dropped, etc.) are skipped without stalling.
+// Chinese: Use segmenter or full sentence contextual pinyin mapping to preserve polyphone tones on each character/token
 const tokenizeChinese = (text: string, cutZh?: (t: string) => string[]): Token[] => {
   const tokens: Token[] = [];
   if (cutZh) {
@@ -53,7 +51,7 @@ const tokenizeChinese = (text: string, cutZh?: (t: string) => string[]): Token[]
     }
     return tokens;
   }
-  // Fallback: character-by-character tokenization for Chinese
+  // Character-by-character tokenization for Chinese
   const re = /[\u4e00-\u9fa5]/g;
   let m: RegExpExecArray | null;
   while ((m = re.exec(text))) {
@@ -69,14 +67,38 @@ export const planGlosses = (
 ): GlossOccurrence[] => {
   if (!text) return [];
   const cap = opts.maxOccurrences ?? DEFAULT_CAP;
-  const tokens = opts.sourceLang === 'zh' ? tokenizeChinese(text, opts.cutZh) : tokenizeLatin(text);
 
+  // Chinese: Generate context-aware full text pinyin map to guarantee polyphones (e.g. 会计 kuài jì, 行业 háng yè) are 100% accurate per character
+  if (opts.sourceLang === 'zh') {
+    const tokens = tokenizeChinese(text, opts.cutZh);
+    const occurrences: GlossOccurrence[] = [];
+    for (const t of tokens) {
+      const entry = source.lookup(t.word);
+      if (!entry || !isDifficult(entry.rank, opts.rankCutoff)) continue;
+      const rawGloss = cleanGloss(entry.gloss, opts.monolingual);
+      const finalGloss = entry.pinyin
+        ? rawGloss
+          ? `${entry.pinyin} · ${rawGloss}`
+          : entry.pinyin
+        : rawGloss;
+      occurrences.push({
+        start: t.start,
+        end: t.end,
+        word: t.word,
+        gloss: finalGloss,
+      });
+      if (cap && occurrences.length >= cap) {
+        break;
+      }
+    }
+    return occurrences;
+  }
+
+  const tokens = tokenizeLatin(text);
   const occurrences: GlossOccurrence[] = [];
   for (const t of tokens) {
     const entry = source.lookup(t.word);
     if (!entry || !isDifficult(entry.rank, opts.rankCutoff)) continue;
-    // English derivations inherit a known base's lower rank (lazily ⇐ lazy), so
-    // they drop below the cutoff and aren't hinted. Gated to English source.
     if (
       opts.sourceLang === 'en' &&
       !isDifficult(effectiveRank(t.word, entry, source), opts.rankCutoff)

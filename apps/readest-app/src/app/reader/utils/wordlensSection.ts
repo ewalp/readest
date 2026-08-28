@@ -118,7 +118,16 @@ export const refreshSectionGlosses = async (
       }
     }
 
-    // 2. Local calculation via pinyin-pro / index
+    // 2. Local calculation via pinyin-pro / index (ensure Jieba is initialized for accurate Chinese segmentation)
+    if (source === 'zh' && !isJiebaReady()) {
+      try {
+        const { initJieba } = await import('@/utils/jieba');
+        await initJieba();
+      } catch {
+        // Continue if jieba initialization fails
+      }
+    }
+
     const occ = planGlosses(model.text, index, {
       sourceLang: source,
       rankCutoff: getRankCutoff(source, level),
