@@ -292,10 +292,19 @@ impl SwiftLinker {
                     .then(|| "-simulator".to_string())
                     .unwrap_or_default()
             );
-            let search_path = out_path.join(triple_dir).join(configuration);
+            let search_path = out_path.join(&triple_dir).join(configuration);
+            let _ = std::fs::create_dir_all(&out_path.join(&triple_dir));
+            #[cfg(unix)]
+            let _ = std::os::unix::fs::symlink(
+                &out_path.join(configuration),
+                &search_path,
+            );
 
             println!("cargo:rerun-if-changed={}", package_path.display());
             println!("cargo:rustc-link-search=native={}", search_path.display());
+            println!("cargo:rustc-link-search=native={}", out_path.join(configuration).display());
+            println!("cargo:rustc-link-search=native={}", out_path.join("out/Products/Debug-iphoneos").display());
+            println!("cargo:rustc-link-search=native={}", out_path.join("out/Products/Release-iphoneos").display());
             println!("cargo:rustc-link-lib=static={}", package.name);
         }
     }

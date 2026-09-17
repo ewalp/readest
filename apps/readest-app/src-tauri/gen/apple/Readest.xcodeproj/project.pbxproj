@@ -20,7 +20,6 @@
 		6CD28C6C81C7C367F51FCB70 /* QuartzCore.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = A77628B94260724841CB0C1F /* QuartzCore.framework */; };
 		77DEFFF81AE57C6577265ADF /* MediaPlayer.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 806FEDFF1D14FC258DA1A7A0 /* MediaPlayer.framework */; };
 		7B3153C771891CB24D874FB8 /* Metal.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 1C29EFE86C85351F81C99F2A /* Metal.framework */; };
-		89B51D8F5E3BC00590E1DA6E /* ReadestWidget.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = BAD20961DC66C6D576E1F60B /* ReadestWidget.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		9E79568218100A2569F00CEA /* SentryBootstrap.m in Sources */ = {isa = PBXBuildFile; fileRef = 683FEABC98A68296CA480126 /* SentryBootstrap.m */; };
 		A3B9B497F2EC434EEEBA2235 /* main.mm in Sources */ = {isa = PBXBuildFile; fileRef = 1CF94262BF7499D2AD8B627D /* main.mm */; };
 		A870FB123FF2CAFB98EDCD36 /* CoreGraphics.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 57535F4C21FEA405C0A45945 /* CoreGraphics.framework */; };
@@ -30,106 +29,73 @@
 		D4A0A4E1CB92879877D7319E /* ReadestWidgetBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 60661C103F0FF9B56906D570 /* ReadestWidgetBundle.swift */; };
 		D59272888A2BFE858490838D /* ReadingWidgetViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 25CB7597C040DC2E2BBAAD58 /* ReadingWidgetViews.swift */; };
 		D608DE39BD2F9FA892508F37 /* UIKit.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 4B62E5ED5797D06981F30B6F /* UIKit.framework */; };
-		E6D9510F89AD18B18D0FCBC9 /* ShareExtension.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = E5F4A6E57CB4895FFFBC2DE8 /* ShareExtension.appex */; settings = {ATTRIBUTES = (CodeSignOnCopy, RemoveHeadersOnCopy, ); }; };
 		E853ADD6F720091D24E184FD /* AppGroupBridge.swift in Sources */ = {isa = PBXBuildFile; fileRef = C1EACF94D1026C7A51CD0A63 /* AppGroupBridge.swift */; };
 		EF4B1B9640A3E70CE3F329E9 /* ReadingWidgetProvider.swift in Sources */ = {isa = PBXBuildFile; fileRef = E4CB13FE16F5D99107B056A7 /* ReadingWidgetProvider.swift */; };
 		F6003A5A70DA4C33BDBD838B /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 30D8E7F6023C1DF41F8BD47C /* LaunchScreen.storyboard */; };
 		FB2C2290EAFB8BA38C973E4B /* assets in Resources */ = {isa = PBXBuildFile; fileRef = 40409827389F82307433878B /* assets */; };
 /* End PBXBuildFile section */
 
-/* Begin PBXContainerItemProxy section */
-		03BA6A76BE384252922805BF /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 4DC84354F14AFCCC05EC3197 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = 44B76E0EA5B592540156EFE5;
-			remoteInfo = ShareExtension;
-		};
-		A5ADF63C73D87F80C946A345 /* PBXContainerItemProxy */ = {
-			isa = PBXContainerItemProxy;
-			containerPortal = 4DC84354F14AFCCC05EC3197 /* Project object */;
-			proxyType = 1;
-			remoteGlobalIDString = C2B0475E36F5AAE3634B6C0F;
-			remoteInfo = ReadestWidget;
-		};
-/* End PBXContainerItemProxy section */
-
-/* Begin PBXCopyFilesBuildPhase section */
-		A279EE551117F7AC6F6762E7 /* Embed Foundation Extensions */ = {
-			isa = PBXCopyFilesBuildPhase;
-			buildActionMask = 2147483647;
-			dstPath = "";
-			dstSubfolderSpec = 13;
-			files = (
-				E6D9510F89AD18B18D0FCBC9 /* ShareExtension.appex in Embed Foundation Extensions */,
-				89B51D8F5E3BC00590E1DA6E /* ReadestWidget.appex in Embed Foundation Extensions */,
-			);
-			name = "Embed Foundation Extensions";
-			runOnlyForDeploymentPostprocessing = 0;
-		};
-/* End PBXCopyFilesBuildPhase section */
-
 /* Begin PBXFileReference section */
-		092369AA44558E8949D2757A /* mod.rs */ = {isa = PBXFileReference; path = mod.rs; sourceTree = "<group>"; };
-		0EB90B3B3C88D7C6ABEDF11E /* menu.rs */ = {isa = PBXFileReference; path = menu.rs; sourceTree = "<group>"; };
-		0F0D4492F8DDE94F4DC4854F /* safari_auth.rs */ = {isa = PBXFileReference; path = safari_auth.rs; sourceTree = "<group>"; };
-		1351267D2F44D28DE9E60E70 /* window.rs */ = {isa = PBXFileReference; path = window.rs; sourceTree = "<group>"; };
+		092369AA44558E8949D2757A /* mod.rs */ = {isa = PBXFileReference; lastKnownFileType = text; path = mod.rs; sourceTree = "<group>"; };
+		0EB90B3B3C88D7C6ABEDF11E /* menu.rs */ = {isa = PBXFileReference; lastKnownFileType = text; path = menu.rs; sourceTree = "<group>"; };
+		0F0D4492F8DDE94F4DC4854F /* safari_auth.rs */ = {isa = PBXFileReference; lastKnownFileType = text; path = safari_auth.rs; sourceTree = "<group>"; };
+		1351267D2F44D28DE9E60E70 /* window.rs */ = {isa = PBXFileReference; lastKnownFileType = text; path = window.rs; sourceTree = "<group>"; };
 		13DB566659AC0A0F741EBBBF /* Security.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Security.framework; path = System/Library/Frameworks/Security.framework; sourceTree = SDKROOT; };
-		1A5492F8B4749D670A93DE66 /* clip_url.rs */ = {isa = PBXFileReference; path = clip_url.rs; sourceTree = "<group>"; };
+		1A5492F8B4749D670A93DE66 /* clip_url.rs */ = {isa = PBXFileReference; lastKnownFileType = text; path = clip_url.rs; sourceTree = "<group>"; };
 		1C29EFE86C85351F81C99F2A /* Metal.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Metal.framework; path = System/Library/Frameworks/Metal.framework; sourceTree = SDKROOT; };
 		1CF94262BF7499D2AD8B627D /* main.mm */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.cpp.objcpp; path = main.mm; sourceTree = "<group>"; };
 		25CB7597C040DC2E2BBAAD58 /* ReadingWidgetViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingWidgetViews.swift; sourceTree = "<group>"; };
 		27B7FEAE989ABFF6C8FF0F77 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
-		282EE616A1F2B81C6121C9B6 /* transfer_file.rs */ = {isa = PBXFileReference; path = transfer_file.rs; sourceTree = "<group>"; };
-		2D116E0618AF542C1A1D9593 /* nightly_update.rs */ = {isa = PBXFileReference; path = nightly_update.rs; sourceTree = "<group>"; };
-		2E226C87AD0606FFF9DDEE11 /* dir_scanner.rs */ = {isa = PBXFileReference; path = dir_scanner.rs; sourceTree = "<group>"; };
+		282EE616A1F2B81C6121C9B6 /* transfer_file.rs */ = {isa = PBXFileReference; lastKnownFileType = text; path = transfer_file.rs; sourceTree = "<group>"; };
+		2D116E0618AF542C1A1D9593 /* nightly_update.rs */ = {isa = PBXFileReference; lastKnownFileType = text; path = nightly_update.rs; sourceTree = "<group>"; };
+		2E226C87AD0606FFF9DDEE11 /* dir_scanner.rs */ = {isa = PBXFileReference; lastKnownFileType = text; path = dir_scanner.rs; sourceTree = "<group>"; };
 		2F0000D58F392BC2F808417D /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		30D8E7F6023C1DF41F8BD47C /* LaunchScreen.storyboard */ = {isa = PBXFileReference; lastKnownFileType = file.storyboard; path = LaunchScreen.storyboard; sourceTree = "<group>"; };
 		32229C1C4618F3DE22D7DA83 /* bindings.h */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.h; path = bindings.h; sourceTree = "<group>"; };
-		3A705F128DD67152CCD839D8 /* os_version.rs */ = {isa = PBXFileReference; path = os_version.rs; sourceTree = "<group>"; };
+		3A705F128DD67152CCD839D8 /* os_version.rs */ = {isa = PBXFileReference; lastKnownFileType = text; path = os_version.rs; sourceTree = "<group>"; };
 		3A89C3EE1081B36DD033E747 /* WidgetSnapshot.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WidgetSnapshot.swift; sourceTree = "<group>"; };
-		3C76FEE05802FC0886EA9BFA /* window_state.rs */ = {isa = PBXFileReference; path = window_state.rs; sourceTree = "<group>"; };
+		3C76FEE05802FC0886EA9BFA /* window_state.rs */ = {isa = PBXFileReference; lastKnownFileType = text; path = window_state.rs; sourceTree = "<group>"; };
 		40409827389F82307433878B /* assets */ = {isa = PBXFileReference; lastKnownFileType = folder; path = assets; sourceTree = SOURCE_ROOT; };
-		46E88042CAF3013F6107F17A /* parser_common.rs */ = {isa = PBXFileReference; path = parser_common.rs; sourceTree = "<group>"; };
+		46E88042CAF3013F6107F17A /* parser_common.rs */ = {isa = PBXFileReference; lastKnownFileType = text; path = parser_common.rs; sourceTree = "<group>"; };
 		4924DDD171577C52C0C5809E /* ShareExtension.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ShareExtension.entitlements; sourceTree = "<group>"; };
 		49682FE37CE0A63C42BE1590 /* GetPageContent.js */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.javascript; path = GetPageContent.js; sourceTree = "<group>"; };
 		4B62E5ED5797D06981F30B6F /* UIKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = UIKit.framework; path = System/Library/Frameworks/UIKit.framework; sourceTree = SDKROOT; };
-		4C4A7AE08BDD49657A0C749E /* mod.rs */ = {isa = PBXFileReference; path = mod.rs; sourceTree = "<group>"; };
+		4C4A7AE08BDD49657A0C749E /* mod.rs */ = {isa = PBXFileReference; lastKnownFileType = text; path = mod.rs; sourceTree = "<group>"; };
 		57535F4C21FEA405C0A45945 /* CoreGraphics.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CoreGraphics.framework; path = System/Library/Frameworks/CoreGraphics.framework; sourceTree = SDKROOT; };
 		576303E7E1596790E0DEF8DC /* libapp.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; path = libapp.a; sourceTree = "<group>"; };
 		5D765B7634BFC9B2D619B82E /* MetalKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MetalKit.framework; path = System/Library/Frameworks/MetalKit.framework; sourceTree = SDKROOT; };
 		60661C103F0FF9B56906D570 /* ReadestWidgetBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadestWidgetBundle.swift; sourceTree = "<group>"; };
-		661E6D88481643D5928A8853 /* discord_rpc.rs */ = {isa = PBXFileReference; path = discord_rpc.rs; sourceTree = "<group>"; };
+		661E6D88481643D5928A8853 /* discord_rpc.rs */ = {isa = PBXFileReference; lastKnownFileType = text; path = discord_rpc.rs; sourceTree = "<group>"; };
 		683FEABC98A68296CA480126 /* SentryBootstrap.m */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.c.objc; path = SentryBootstrap.m; sourceTree = "<group>"; };
 		7DADD61846736B0E638BF012 /* Readest_iOS.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = Readest_iOS.entitlements; sourceTree = "<group>"; };
 		806FEDFF1D14FC258DA1A7A0 /* MediaPlayer.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = MediaPlayer.framework; path = System/Library/Frameworks/MediaPlayer.framework; sourceTree = SDKROOT; };
 		93460D5281B9FD6211B45C72 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
-		983AD7B7F8D8B9BF527EF05D /* traffic_light.rs */ = {isa = PBXFileReference; path = traffic_light.rs; sourceTree = "<group>"; };
+		983AD7B7F8D8B9BF527EF05D /* traffic_light.rs */ = {isa = PBXFileReference; lastKnownFileType = text; path = traffic_light.rs; sourceTree = "<group>"; };
 		9AFF95DFCB4CA01100B8C075 /* libapp.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; path = libapp.a; sourceTree = "<group>"; };
-		9B00698C6D8D59E6093819A0 /* range_file.rs */ = {isa = PBXFileReference; path = range_file.rs; sourceTree = "<group>"; };
-		9B22460180952B7C3F11DE9D /* main.rs */ = {isa = PBXFileReference; path = main.rs; sourceTree = "<group>"; };
+		9B00698C6D8D59E6093819A0 /* range_file.rs */ = {isa = PBXFileReference; lastKnownFileType = text; path = range_file.rs; sourceTree = "<group>"; };
+		9B22460180952B7C3F11DE9D /* main.rs */ = {isa = PBXFileReference; lastKnownFileType = text; path = main.rs; sourceTree = "<group>"; };
 		9CE7112678AB90D73F62180F /* CarPlaySceneDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CarPlaySceneDelegate.swift; sourceTree = "<group>"; };
-		A02C074BB1C537B8020DB593 /* system_dictionary.rs */ = {isa = PBXFileReference; path = system_dictionary.rs; sourceTree = "<group>"; };
-		A37E99A73D229E08C8B46AEB /* epub_parser.rs */ = {isa = PBXFileReference; path = epub_parser.rs; sourceTree = "<group>"; };
-		A7318D4877A991A1DAB79861 /* lib.rs */ = {isa = PBXFileReference; path = lib.rs; sourceTree = "<group>"; };
+		A02C074BB1C537B8020DB593 /* system_dictionary.rs */ = {isa = PBXFileReference; lastKnownFileType = text; path = system_dictionary.rs; sourceTree = "<group>"; };
+		A37E99A73D229E08C8B46AEB /* epub_parser.rs */ = {isa = PBXFileReference; lastKnownFileType = text; path = epub_parser.rs; sourceTree = "<group>"; };
+		A7318D4877A991A1DAB79861 /* lib.rs */ = {isa = PBXFileReference; lastKnownFileType = text; path = lib.rs; sourceTree = "<group>"; };
 		A77628B94260724841CB0C1F /* QuartzCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = QuartzCore.framework; path = System/Library/Frameworks/QuartzCore.framework; sourceTree = SDKROOT; };
-		AA9882F143239C0055D58746 /* spawn_fresh_browser.rs */ = {isa = PBXFileReference; path = spawn_fresh_browser.rs; sourceTree = "<group>"; };
-		AF314D0DE71EED6A946E0616 /* mobi_parser.rs */ = {isa = PBXFileReference; path = mobi_parser.rs; sourceTree = "<group>"; };
-		B16A12C78C47C4990EB4A028 /* apple_auth.rs */ = {isa = PBXFileReference; path = apple_auth.rs; sourceTree = "<group>"; };
+		AA9882F143239C0055D58746 /* spawn_fresh_browser.rs */ = {isa = PBXFileReference; lastKnownFileType = text; path = spawn_fresh_browser.rs; sourceTree = "<group>"; };
+		AF314D0DE71EED6A946E0616 /* mobi_parser.rs */ = {isa = PBXFileReference; lastKnownFileType = text; path = mobi_parser.rs; sourceTree = "<group>"; };
+		B16A12C78C47C4990EB4A028 /* apple_auth.rs */ = {isa = PBXFileReference; lastKnownFileType = text; path = apple_auth.rs; sourceTree = "<group>"; };
 		B54784C0F9E4197FF454E3C0 /* libapp.a */ = {isa = PBXFileReference; lastKnownFileType = archive.ar; path = libapp.a; sourceTree = "<group>"; };
-		BAD20961DC66C6D576E1F60B /* ReadestWidget.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = ReadestWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
-		BF6CBF86E39770276E8FAFB4 /* sentry_config.rs */ = {isa = PBXFileReference; path = sentry_config.rs; sourceTree = "<group>"; };
+		BAD20961DC66C6D576E1F60B /* ReadestWidget.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ReadestWidget.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		BF6CBF86E39770276E8FAFB4 /* sentry_config.rs */ = {isa = PBXFileReference; lastKnownFileType = text; path = sentry_config.rs; sourceTree = "<group>"; };
 		C1EACF94D1026C7A51CD0A63 /* AppGroupBridge.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppGroupBridge.swift; sourceTree = "<group>"; };
 		C5052368822445B8F6FC0638 /* ReadestWidget.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = ReadestWidget.entitlements; sourceTree = "<group>"; };
 		CB595336F6275E2B879AF397 /* ShareViewController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ShareViewController.swift; sourceTree = "<group>"; };
-		D3F4A4DF56E899C9DB0B7D60 /* eink.rs */ = {isa = PBXFileReference; path = eink.rs; sourceTree = "<group>"; };
-		DAC68A4107C30410409E5506 /* Readest_iOS.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Readest_iOS.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		D3F4A4DF56E899C9DB0B7D60 /* eink.rs */ = {isa = PBXFileReference; lastKnownFileType = text; path = eink.rs; sourceTree = "<group>"; };
+		DAC68A4107C30410409E5506 /* Readest.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = Readest.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		E4CB13FE16F5D99107B056A7 /* ReadingWidgetProvider.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ReadingWidgetProvider.swift; sourceTree = "<group>"; };
-		E5F4A6E57CB4895FFFBC2DE8 /* ShareExtension.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = ShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		E5F4A6E57CB4895FFFBC2DE8 /* ShareExtension.appex */ = {isa = PBXFileReference; explicitFileType = "wrapper.app-extension"; includeInIndex = 0; path = ShareExtension.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		EF6CC501CA70CA9BBEA6F3D9 /* WidgetKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WidgetKit.framework; path = System/Library/Frameworks/WidgetKit.framework; sourceTree = SDKROOT; };
 		F7F1EE1A41EFDFC53AA8AC46 /* CarPlay.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = CarPlay.framework; path = System/Library/Frameworks/CarPlay.framework; sourceTree = SDKROOT; };
 		FB09AA381EE87AED8151864C /* WebKit.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = WebKit.framework; path = System/Library/Frameworks/WebKit.framework; sourceTree = SDKROOT; };
-		FF84C225AF4E94849713D59C /* mod.rs */ = {isa = PBXFileReference; path = mod.rs; sourceTree = "<group>"; };
+		FF84C225AF4E94849713D59C /* mod.rs */ = {isa = PBXFileReference; lastKnownFileType = text; path = mod.rs; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -204,7 +170,7 @@
 		2D6F041DFA6B062224902B98 /* Products */ = {
 			isa = PBXGroup;
 			children = (
-				DAC68A4107C30410409E5506 /* Readest_iOS.app */,
+				DAC68A4107C30410409E5506 /* Readest.app */,
 				BAD20961DC66C6D576E1F60B /* ReadestWidget.appex */,
 				E5F4A6E57CB4895FFFBC2DE8 /* ShareExtension.appex */,
 			);
@@ -366,13 +332,6 @@
 			path = ../../src;
 			sourceTree = "<group>";
 		};
-		"TEMP_2EAFEA11-E7B7-45F1-A585-9CBEC3B276A8" /* x86_64 */ = {
-			isa = PBXGroup;
-			children = (
-			);
-			path = x86_64;
-			sourceTree = "<group>";
-		};
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
@@ -384,20 +343,17 @@
 				30C7D79143BD14DFDA5E1062 /* Sources */,
 				D688C250839BE2493EC2C660 /* Resources */,
 				13234A71E754A795C45E44EC /* Frameworks */,
-				A279EE551117F7AC6F6762E7 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
-				36709209B4F223291AF5B857 /* PBXTargetDependency */,
-				D0D65668018F8B1C3AED5E22 /* PBXTargetDependency */,
 			);
 			name = Readest_iOS;
 			packageProductDependencies = (
 				BA7D35F7E90C824A389B15DD /* Sentry */,
 			);
 			productName = Readest_iOS;
-			productReference = DAC68A4107C30410409E5506 /* Readest_iOS.app */;
+			productReference = DAC68A4107C30410409E5506 /* Readest.app */;
 			productType = "com.apple.product-type.application";
 		};
 		44B76E0EA5B592540156EFE5 /* ShareExtension */ = {
@@ -443,16 +399,16 @@
 			isa = PBXProject;
 			attributes = {
 				BuildIndependentTargetsInParallel = YES;
-				LastUpgradeCheck = 1430;
+				LastUpgradeCheck = 2700;
 				TargetAttributes = {
 					004FF73D61EDB0623C953EBF = {
-						DevelopmentTeam = J5W48D69VR;
+						ProvisioningStyle = Automatic;
 					};
 					44B76E0EA5B592540156EFE5 = {
-						DevelopmentTeam = J5W48D69VR;
+						ProvisioningStyle = Automatic;
 					};
 					C2B0475E36F5AAE3634B6C0F = {
-						DevelopmentTeam = J5W48D69VR;
+						ProvisioningStyle = Automatic;
 					};
 				};
 			};
@@ -521,7 +477,7 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 			shellPath = /bin/sh;
-			shellScript = "pnpm tauri ios xcode-script -v --platform ${PLATFORM_DISPLAY_NAME:?} --sdk-root ${SDKROOT:?} --framework-search-paths \"${FRAMEWORK_SEARCH_PATHS:?}\" --header-search-paths \"${HEADER_SEARCH_PATHS:?}\" --gcc-preprocessor-definitions \"${GCC_PREPROCESSOR_DEFINITIONS:-}\" --configuration ${CONFIGURATION:?} ${FORCE_COLOR} ${ARCHS:?}";
+			shellScript = "export PATH=\"$HOME/.local/bin:$HOME/.cargo/bin:/opt/homebrew/bin:/opt/homebrew/sbin:/usr/local/bin:$PATH\"\nif [ -s \"$HOME/.nvm/nvm.sh\" ]; then\n  . \"$HOME/.nvm/nvm.sh\"\nfi\nif [ -s \"$HOME/.cargo/env\" ]; then\n  . \"$HOME/.cargo/env\"\nfi\npnpm tauri ios xcode-script -v --platform ${PLATFORM_DISPLAY_NAME:?} --sdk-root ${SDKROOT:?} --framework-search-paths \"${FRAMEWORK_SEARCH_PATHS:?}\" --header-search-paths \"${HEADER_SEARCH_PATHS:?}\" --gcc-preprocessor-definitions \"${GCC_PREPROCESSOR_DEFINITIONS:-}\" --configuration ${CONFIGURATION:?} ${FORCE_COLOR} ${ARCHS:?}";
 		};
 /* End PBXShellScriptBuildPhase section */
 
@@ -558,39 +514,22 @@
 		};
 /* End PBXSourcesBuildPhase section */
 
-/* Begin PBXTargetDependency section */
-		36709209B4F223291AF5B857 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = 44B76E0EA5B592540156EFE5 /* ShareExtension */;
-			targetProxy = 03BA6A76BE384252922805BF /* PBXContainerItemProxy */;
-		};
-		D0D65668018F8B1C3AED5E22 /* PBXTargetDependency */ = {
-			isa = PBXTargetDependency;
-			target = C2B0475E36F5AAE3634B6C0F /* ReadestWidget */;
-			targetProxy = A5ADF63C73D87F80C946A345 /* PBXContainerItemProxy */;
-		};
-/* End PBXTargetDependency section */
-
 /* Begin XCBuildConfiguration section */
 		04ED2C8C8903E9E56E98A711 /* debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = NO;
-				ARCHS = (
-					arm64,
-				);
 				CODE_SIGN_ENTITLEMENTS = ShareExtension/ShareExtension.entitlements;
-				DEVELOPMENT_TEAM = J5W48D69VR;
+				DEVELOPMENT_TEAM = "";
 				ENABLE_BITCODE = NO;
 				"EXCLUDED_ARCHS[sdk=iphoneos*]" = x86_64;
 				INFOPLIST_FILE = ShareExtension/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				IPHONEOS_DEPLOYMENT_TARGET = "$(RECOMMENDED_IPHONEOS_DEPLOYMENT_TARGET)";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.bilingify.readest.ShareExtension;
+				PRODUCT_BUNDLE_IDENTIFIER = com.walpinjd.readest.ShareExtension;
 				PRODUCT_NAME = ShareExtension;
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
@@ -603,14 +542,10 @@
 		2A8D4045800079AA24F37354 /* debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
-				ARCHS = (
-					arm64,
-				);
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Readest_iOS/Readest_iOS.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				DEVELOPMENT_TEAM = J5W48D69VR;
+				DEVELOPMENT_TEAM = 8BX6X22NU6;
 				EMBEDDED_CONTENT_CONTAINS_SWIFT_CODE = YES;
 				ENABLE_BITCODE = NO;
 				"EXCLUDED_ARCHS[sdk=iphoneos*]" = x86_64;
@@ -619,14 +554,27 @@
 					"\".\"",
 				);
 				INFOPLIST_FILE = Readest_iOS/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = "$(RECOMMENDED_IPHONEOS_DEPLOYMENT_TARGET)";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				"LIBRARY_SEARCH_PATHS[arch=arm64]" = "$(inherited) $(PROJECT_DIR)/Externals/arm64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(TOOLCHAIN_DIR)/usr/lib/swift/$(PLATFORM_NAME) $(TOOLCHAIN_DIR)/usr/lib/swift-5.0/$(PLATFORM_NAME)";
-				"LIBRARY_SEARCH_PATHS[arch=x86_64]" = "$(inherited) $(PROJECT_DIR)/Externals/x86_64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(TOOLCHAIN_DIR)/usr/lib/swift/$(PLATFORM_NAME) $(TOOLCHAIN_DIR)/usr/lib/swift-5.0/$(PLATFORM_NAME)";
-				PRODUCT_BUNDLE_IDENTIFIER = com.bilingify.readest;
-				PRODUCT_NAME = Readest;
+				"LIBRARY_SEARCH_PATHS[arch=arm64]" = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/Externals/arm64/$(CONFIGURATION)",
+					"$(SDKROOT)/usr/lib/swift",
+					"$(TOOLCHAIN_DIR)/usr/lib/swift/$(PLATFORM_NAME)",
+					"$(TOOLCHAIN_DIR)/usr/lib/swift-5.0/$(PLATFORM_NAME)",
+				);
+				"LIBRARY_SEARCH_PATHS[arch=x86_64]" = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/Externals/x86_64/$(CONFIGURATION)",
+					"$(SDKROOT)/usr/lib/swift",
+					"$(TOOLCHAIN_DIR)/usr/lib/swift/$(PLATFORM_NAME)",
+					"$(TOOLCHAIN_DIR)/usr/lib/swift-5.0/$(PLATFORM_NAME)",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.walpinjd.readest;
+				PRODUCT_NAME = "Readest";
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -638,6 +586,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
@@ -671,6 +620,7 @@
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_DYNAMIC_NO_PIC = NO;
 				GCC_NO_COMMON_BLOCKS = YES;
@@ -691,6 +641,7 @@
 				ONLY_ACTIVE_ARCH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
 				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
 				SWIFT_VERSION = 5.0;
@@ -700,14 +651,10 @@
 		3F6A0A6F9FE76F726D0186B1 /* release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = YES;
-				ARCHS = (
-					arm64,
-				);
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				CODE_SIGN_ENTITLEMENTS = Readest_iOS/Readest_iOS.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
-				DEVELOPMENT_TEAM = J5W48D69VR;
+				DEVELOPMENT_TEAM = 8BX6X22NU6;
 				EMBEDDED_CONTENT_CONTAINS_SWIFT_CODE = YES;
 				ENABLE_BITCODE = NO;
 				"EXCLUDED_ARCHS[sdk=iphoneos*]" = x86_64;
@@ -716,14 +663,27 @@
 					"\".\"",
 				);
 				INFOPLIST_FILE = Readest_iOS/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = "$(RECOMMENDED_IPHONEOS_DEPLOYMENT_TARGET)";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				"LIBRARY_SEARCH_PATHS[arch=arm64]" = "$(inherited) $(PROJECT_DIR)/Externals/arm64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(TOOLCHAIN_DIR)/usr/lib/swift/$(PLATFORM_NAME) $(TOOLCHAIN_DIR)/usr/lib/swift-5.0/$(PLATFORM_NAME)";
-				"LIBRARY_SEARCH_PATHS[arch=x86_64]" = "$(inherited) $(PROJECT_DIR)/Externals/x86_64/$(CONFIGURATION) $(SDKROOT)/usr/lib/swift $(TOOLCHAIN_DIR)/usr/lib/swift/$(PLATFORM_NAME) $(TOOLCHAIN_DIR)/usr/lib/swift-5.0/$(PLATFORM_NAME)";
-				PRODUCT_BUNDLE_IDENTIFIER = com.bilingify.readest;
-				PRODUCT_NAME = Readest;
+				"LIBRARY_SEARCH_PATHS[arch=arm64]" = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/Externals/arm64/$(CONFIGURATION)",
+					"$(SDKROOT)/usr/lib/swift",
+					"$(TOOLCHAIN_DIR)/usr/lib/swift/$(PLATFORM_NAME)",
+					"$(TOOLCHAIN_DIR)/usr/lib/swift-5.0/$(PLATFORM_NAME)",
+				);
+				"LIBRARY_SEARCH_PATHS[arch=x86_64]" = (
+					"$(inherited)",
+					"$(PROJECT_DIR)/Externals/x86_64/$(CONFIGURATION)",
+					"$(SDKROOT)/usr/lib/swift",
+					"$(TOOLCHAIN_DIR)/usr/lib/swift/$(PLATFORM_NAME)",
+					"$(TOOLCHAIN_DIR)/usr/lib/swift-5.0/$(PLATFORM_NAME)",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.walpinjd.readest;
+				PRODUCT_NAME = "Readest";
 				SDKROOT = iphoneos;
 				SWIFT_VERSION = 5.0;
 				TARGETED_DEVICE_FAMILY = "1,2";
@@ -735,6 +695,7 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
 				CLANG_ANALYZER_NONNULL = YES;
 				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
 				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
@@ -768,6 +729,7 @@
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = NO;
 				GCC_C_LANGUAGE_STANDARD = gnu11;
 				GCC_NO_COMMON_BLOCKS = YES;
 				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
@@ -781,6 +743,7 @@
 				MTL_FAST_MATH = YES;
 				PRODUCT_NAME = "$(TARGET_NAME)";
 				SDKROOT = iphoneos;
+				STRING_CATALOG_GENERATE_SYMBOLS = YES;
 				SWIFT_COMPILATION_MODE = wholemodule;
 				SWIFT_OPTIMIZATION_LEVEL = "-O";
 				SWIFT_VERSION = 5.0;
@@ -790,22 +753,18 @@
 		A580FD3C122F6E59AD769DEA /* release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = NO;
-				ARCHS = (
-					arm64,
-				);
 				CODE_SIGN_ENTITLEMENTS = ReadestWidget/ReadestWidget.entitlements;
-				DEVELOPMENT_TEAM = J5W48D69VR;
+				DEVELOPMENT_TEAM = "";
 				ENABLE_BITCODE = NO;
 				"EXCLUDED_ARCHS[sdk=iphoneos*]" = x86_64;
 				INFOPLIST_FILE = ReadestWidget/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				IPHONEOS_DEPLOYMENT_TARGET = "$(RECOMMENDED_IPHONEOS_DEPLOYMENT_TARGET)";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.bilingify.readest.ReadestWidget;
+				PRODUCT_BUNDLE_IDENTIFIER = com.walpinjd.readest.ReadestWidget;
 				PRODUCT_NAME = ReadestWidget;
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
@@ -818,22 +777,18 @@
 		C8133B6719701AA0FCBFB505 /* release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = NO;
-				ARCHS = (
-					arm64,
-				);
 				CODE_SIGN_ENTITLEMENTS = ShareExtension/ShareExtension.entitlements;
-				DEVELOPMENT_TEAM = J5W48D69VR;
+				DEVELOPMENT_TEAM = "";
 				ENABLE_BITCODE = NO;
 				"EXCLUDED_ARCHS[sdk=iphoneos*]" = x86_64;
 				INFOPLIST_FILE = ShareExtension/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				IPHONEOS_DEPLOYMENT_TARGET = "$(RECOMMENDED_IPHONEOS_DEPLOYMENT_TARGET)";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.bilingify.readest.ShareExtension;
+				PRODUCT_BUNDLE_IDENTIFIER = com.walpinjd.readest.ShareExtension;
 				PRODUCT_NAME = ShareExtension;
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
@@ -846,22 +801,18 @@
 		D9546DBD8A8E4E0CBFA34986 /* debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
-				ALWAYS_EMBED_SWIFT_STANDARD_LIBRARIES = NO;
-				ARCHS = (
-					arm64,
-				);
 				CODE_SIGN_ENTITLEMENTS = ReadestWidget/ReadestWidget.entitlements;
-				DEVELOPMENT_TEAM = J5W48D69VR;
+				DEVELOPMENT_TEAM = "";
 				ENABLE_BITCODE = NO;
 				"EXCLUDED_ARCHS[sdk=iphoneos*]" = x86_64;
 				INFOPLIST_FILE = ReadestWidget/Info.plist;
-				IPHONEOS_DEPLOYMENT_TARGET = 15.0;
+				IPHONEOS_DEPLOYMENT_TARGET = "$(RECOMMENDED_IPHONEOS_DEPLOYMENT_TARGET)";
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 					"@executable_path/../../Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.bilingify.readest.ReadestWidget;
+				PRODUCT_BUNDLE_IDENTIFIER = com.walpinjd.readest.ReadestWidget;
 				PRODUCT_NAME = ReadestWidget;
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;

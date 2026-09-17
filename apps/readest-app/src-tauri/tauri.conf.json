@@ -2,7 +2,7 @@
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "Readest",
   "mainBinaryName": "readest",
-  "identifier": "com.bilingify.readest",
+  "identifier": "com.walpinjd.readest",
   "version": "../package.json",
   "build": {
     "frontendDist": "../out",
@@ -72,7 +72,6 @@
       "minSdkVersion": 26
     },
     "iOS": {
-      "developmentTeam": "J5W48D69VR",
       "infoPlist": "./Info-ios.plist",
       "minimumSystemVersion": "15.0"
     },
