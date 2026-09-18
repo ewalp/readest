@@ -13,8 +13,21 @@ export PATH="$HOME/.local/bin:$HOME/.cargo/bin:/opt/homebrew/bin:/opt/homebrew/s
 PROJECT_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 DEVICE_ID="00008030-000A49E60E60C02E"
 IPA_PATH="$PROJECT_ROOT/apps/readest-app/src-tauri/gen/apple/build/arm64/Readest.ipa"
+ENTITLEMENTS_FILE="$PROJECT_ROOT/apps/readest-app/src-tauri/gen/apple/Readest_iOS/Readest_iOS.entitlements"
 
 cd "$PROJECT_ROOT"
+
+# 2. 自动修正个人免费开发者特权配置（移除付费特权 associated-domains，确保个人证书免阻断）
+if [ -f "$ENTITLEMENTS_FILE" ]; then
+  cat << 'EOF' > "$ENTITLEMENTS_FILE"
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+</dict>
+</plist>
+EOF
+fi
 
 echo "📦 [1/2] 正在编译前端、Rust 后端并自动完成 iOS 签名..."
 pnpm --filter @readest/readest-app tauri ios build --debug --export-method debugging
