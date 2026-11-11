@@ -3,7 +3,16 @@
 import { useEffect, useState, useRef, memo, useMemo } from 'react';
 import mermaid from 'mermaid';
 import { ZoomIn, ZoomOut, Maximize2, RefreshCcw } from 'lucide-react';
-import { useMermaidStore } from '@/store/mermaidStore';
+import {
+  useMermaidStore,
+  getCachedMermaidSvg,
+  cacheMermaidSvg,
+  clearMermaidSvgCache,
+  hashMermaidCode,
+} from '@/store/mermaidStore';
+import { loadMermaidSvg, saveMermaidSvg, clearMermaidSvgForBook } from '@/services/mermaidSvgStore';
+import { useOptionalEnv } from '@/context/EnvContext';
+import { useMermaidBookHash } from './MermaidBookContext';
 
 // Initialize mermaid config
 mermaid.initialize({
@@ -21,7 +30,14 @@ interface MermaidBlockProps {
 }
 
 export const MermaidBlock = memo(function MermaidBlock({ code }: MermaidBlockProps) {
-  const [svg, setSvg] = useState('');
+  const env = useOptionalEnv();
+  const appService = env?.appService ?? null;
+  const bookHash = useMermaidBookHash();
+  const codeHash = useMemo(() => hashMermaidCode(code), [code]);
+
+  // Seed from the in-memory front synchronously, so a re-mount paints the
+  // already-rendered SVG on the very first frame instead of blanking out.
+  const [svg, setSvg] = useState(() => getCachedMermaidSvg(code) ?? '');
   const [error, setError] = useState<string | null>(null);
   const [scale, setScale] = useState(1);
   const [retryCount, setRetryCount] = useState(0);
@@ -45,11 +61,35 @@ export const MermaidBlock = memo(function MermaidBlock({ code }: MermaidBlockPro
     let mounted = true;
     const currentCode = code;
 
+    // L1: in-memory hit. Zero async work, paints immediately.
+    if (retryCount === 0) {
+      const cached = getCachedMermaidSvg(currentCode);
+      if (cached) {
+        setSvg(cached);
+        setError(null);
+        return;
+      }
+    }
+
     const renderDiagram = async () => {
       // Don't try to render if code is too short
       if (!currentCode || currentCode.length < 3) return;
       // Stale check
       if (currentCode !== codeRef.current) return;
+
+      // L2: the durable copy in reedy.db. This is what makes the cache live as
+      // long as the book rather than as long as the process: on a cold start,
+      // or after an L1 eviction, the diagram comes back without re-rendering.
+      if (retryCount === 0 && appService && bookHash) {
+        const persisted = await loadMermaidSvg(appService, bookHash, codeHash);
+        if (!mounted || currentCode !== codeRef.current) return;
+        if (persisted) {
+          cacheMermaidSvg(currentCode, persisted);
+          setSvg(persisted);
+          setError(null);
+          return;
+        }
+      }
 
       try {
         if (await mermaid.parse(currentCode)) {
@@ -64,8 +104,14 @@ export const MermaidBlock = memo(function MermaidBlock({ code }: MermaidBlockPro
 
         // Final check
         if (mounted && currentCode === codeRef.current) {
+          cacheMermaidSvg(currentCode, renderedSvg);
           setSvg(renderedSvg);
           setError(null);
+          // Persist for future sessions. Written after paint so a slow disk
+          // never delays the diagram appearing.
+          if (appService && bookHash) {
+            void saveMermaidSvg(appService, bookHash, codeHash, renderedSvg);
+          }
         }
       } catch (err) {
         if (mounted && currentCode === codeRef.current) {
@@ -79,14 +125,15 @@ export const MermaidBlock = memo(function MermaidBlock({ code }: MermaidBlockPro
       }
     };
 
-    // Increased debounce to reduce flickering during streaming
+    // Debounce stays: it only delays genuinely new diagram source (streaming
+    // output), never a cache hit, which returned above.
     const timeoutId = setTimeout(renderDiagram, 500);
 
     return () => {
       mounted = false;
       clearTimeout(timeoutId);
     };
-  }, [code, diagramId, retryCount]);
+  }, [code, codeHash, diagramId, retryCount, appService, bookHash]);
 
   if (error && !svg) {
     return (
@@ -95,7 +142,17 @@ export const MermaidBlock = memo(function MermaidBlock({ code }: MermaidBlockPro
         <div className='absolute right-2 top-2 flex items-center gap-2'>
           <span className='text-[10px] text-red-500'>Render Failed</span>
           <button
-            onClick={() => setRetryCount((c) => c + 1)}
+            onClick={() => {
+              // A manual retry means "I don't trust the cached result" — drop
+              // both layers so the render effect cannot short-circuit on a
+              // stale hit, in memory or in the database.
+              clearMermaidSvgCache();
+              if (appService && bookHash) {
+                void clearMermaidSvgForBook(appService, bookHash);
+              }
+              setError(null);
+              setRetryCount((c) => c + 1);
+            }}
             className='btn btn-ghost btn-xs btn-square hover:text-primary text-gray-500'
             title='Retry'
           >

@@ -118,6 +118,9 @@ export class ReedyBackend implements RetrievalBackend {
   async clearBook(bookHash: string): Promise<void> {
     const { reedy } = await this.reedyReady;
     await reedy.dropBookData(bookHash);
+    // Re-indexing regenerates the diagrams anyway; leaving stale SVGs behind
+    // would let an outdated render survive a re-index.
+    await reedy.dropMermaidSvgs(bookHash);
   }
 
   buildLookupTool(args: {

@@ -260,6 +260,26 @@ export class ReedyDb {
   }
 
   /**
+   * Drop this book's rendered Mermaid diagrams.
+   *
+   * Called from `clearBook` (re-index / delete book). Re-indexing rebuilds the
+   * answers those diagrams came from, so keeping the old SVGs would let a
+   * stale render outlive the content it described.
+   *
+   * Separate from dropBookData so a re-index never has to know whether the
+   * mermaid table exists yet.
+   */
+  async dropMermaidSvgs(bookHash: string): Promise<void> {
+    await this.enqueue(async () => {
+      const has = await this.db.select<{ name: string }>(
+        "SELECT name FROM sqlite_master WHERE type='table' AND name='reedy_mermaid_svg'",
+      );
+      if (has.length === 0) return;
+      await this.db.execute('DELETE FROM reedy_mermaid_svg WHERE book_hash = ?', [bookHash]);
+    });
+  }
+
+  /**
    * Wipe every Reedy-managed row across the database. Used when the user
    * switches embedding models — the lazy embeddings table keeps its
    * existing vector32(<old-dim>) shape until something writes to it again,
@@ -275,6 +295,9 @@ export class ReedyDb {
       await this.db.execute('DROP TABLE IF EXISTS reedy_memory_embeddings');
       await this.db.execute('DELETE FROM reedy_book_chunks');
       await this.db.execute('DELETE FROM reedy_memory');
+      // Deleting rows, not dropping the table: the migration already ran and its
+      // record stays, so a DROP would leave the table missing forever.
+      await this.db.execute('DELETE FROM reedy_mermaid_svg');
     });
   }
 

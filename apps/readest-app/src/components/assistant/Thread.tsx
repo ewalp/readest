@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useRef, useMemo, type FC } from 'react';
+import { useEffect, useRef, useMemo, memo, createContext, useContext, type FC } from 'react';
 import {
   ActionBarPrimitive,
   AssistantIf,
@@ -51,6 +51,48 @@ interface ThreadProps {
   isLoadingHistory?: boolean;
   hasActiveConversation?: boolean;
 }
+
+/**
+ * Carries the per-thread presentation props down to the assistant message slot
+ * WITHOUT putting them on the `components` object handed to
+ * `ThreadPrimitive.Messages`.
+ *
+ * Why this indirection exists — the "mermaid diagram blinks" bug
+ * --------------------------------------------------------------
+ * assistant-ui compares the `components` prop by IDENTITY
+ * (`isComponentsSame`, a plain `===` per slot). Any inline arrow function in
+ * that object is a new function every render, and React treats a new function
+ * identity at the same tree position as a DIFFERENT component type — so it
+ * unmounts the old subtree and mounts a fresh one.
+ *
+ * That remount threw away MermaidBlock's `svg` state, emptying the diagram,
+ * and started its 500ms debounce + full `mermaid.render()` again, which is
+ * exactly the "diagram vanishes for a second or two and then comes back"
+ * symptom. It fired on every parent re-render: page turns, progress saves,
+ * theme changes, notebook resizes — and got worse the longer the session ran
+ * because more messages meant more subtrees to tear down each time.
+ *
+ * Keeping the slot as a module-level component and sourcing the values from
+ * context makes the `components` object a stable constant, so assistant-ui's
+ * identity check finally holds and messages never remount.
+ */
+interface AssistantMessageSlotValue {
+  sources: SourceItem[];
+  onSourceClick?: (source: SourceItem) => void;
+  fontSize: number;
+}
+
+const AssistantMessageSlotContext = createContext<AssistantMessageSlotValue>({
+  sources: [],
+  fontSize: 14,
+});
+
+/**
+ * Module-level constant so `MessagePrimitive.Parts` sees the same object on
+ * every render. `MarkdownText` itself is already a stable module-level memo
+ * component; the object literal was the only per-render allocation.
+ */
+const MARKDOWN_PART_COMPONENTS = { Text: MarkdownText };
 
 const LoadingOverlay: FC<{ isVisible: boolean }> = ({ isVisible }) => {
   return (
@@ -115,14 +157,30 @@ export const Thread: FC<ThreadProps> = ({
   isLoadingHistory = false,
   hasActiveConversation = false,
 }) => {
-  const { settings } = useSettingsStore();
-  const { themeCode } = useThemeStore();
-  const { sideBarBookKey } = useSidebarStore();
+  // Per-field selectors (not `useStore()` destructuring): the reader writes
+  // these stores on page turns, saves and theme changes, and a whole-store
+  // subscription made every one of those re-render the whole thread — the
+  // trigger side of the "mermaid diagram blinks" bug. See the comment on
+  // AssistantMessageSlotContext for the remount side.
+  const aiFontSize = useSettingsStore((s) => s.settings?.aiSettings?.fontSize);
+  const aiUseBookTheme = useSettingsStore((s) => s.settings?.aiSettings?.useBookTheme);
+  const themeCode = useThemeStore((s) => s.themeCode);
+  const sideBarBookKey = useSidebarStore((s) => s.sideBarBookKey);
   const assistantRuntime = useAssistantRuntime();
 
-  const aiSettings = settings.aiSettings;
-  const fontSize = aiSettings?.fontSize || 14;
-  const useBookTheme = aiSettings?.useBookTheme ?? true;
+  const fontSize = aiFontSize || 14;
+  const useBookTheme = aiUseBookTheme ?? true;
+
+  // Stable identity: assistant-ui's memo on ThreadPrimitive.Messages only
+  // bails out when every slot keeps the same function reference.
+  const threadMessageComponents = useMemo(
+    () => ({ UserMessage, EditComposer, AssistantMessage: AssistantMessageSlot }),
+    [],
+  );
+  const assistantSlotValue = useMemo<AssistantMessageSlotValue>(
+    () => ({ sources, onSourceClick, fontSize }),
+    [sources, onSourceClick, fontSize],
+  );
 
   // Calculate theme variables if we need to match book theme
   const themeStyles = useMemo(() => {
@@ -193,90 +251,82 @@ export const Thread: FC<ThreadProps> = ({
   };
 
   return (
-    <ThreadPrimitive.Root
-      className={cn(
-        'relative flex h-full w-full flex-col items-stretch px-3',
-        !useBookTheme && 'bg-base-100',
-      )}
-      style={{
-        ...themeStyles,
-        backgroundColor: useBookTheme ? 'var(--thread-bg, var(--base-100))' : undefined,
-        color: useBookTheme ? 'var(--thread-fg, var(--base-content))' : undefined,
-      }}
-    >
-      <LoadingOverlay isVisible={showLoading} />
+    <AssistantMessageSlotContext.Provider value={assistantSlotValue}>
+      <ThreadPrimitive.Root
+        className={cn(
+          'relative flex h-full w-full flex-col items-stretch px-3',
+          !useBookTheme && 'bg-base-100',
+        )}
+        style={{
+          ...themeStyles,
+          backgroundColor: useBookTheme ? 'var(--thread-bg, var(--base-100))' : undefined,
+          color: useBookTheme ? 'var(--thread-fg, var(--base-content))' : undefined,
+        }}
+      >
+        <LoadingOverlay isVisible={showLoading} />
 
-      {messageCount === 0 && (
-        <div className='animate-in fade-in flex h-full flex-col items-center justify-center duration-300'>
-          <div className='bg-base-content/10 mb-4 rounded-full p-3'>
-            <BookOpenIcon className='text-base-content size-6' />
+        {messageCount === 0 && (
+          <div className='animate-in fade-in flex h-full flex-col items-center justify-center duration-300'>
+            <div className='bg-base-content/10 mb-4 rounded-full p-3'>
+              <BookOpenIcon className='text-base-content size-6' />
+            </div>
+            <h3 className='text-base-content mb-1 text-sm font-medium'>Ask about this book</h3>
+            <p className='text-base-content/60 mb-4 text-xs'>
+              Get answers based on the book content
+            </p>
+
+            <button
+              type='button'
+              onClick={() => {
+                assistantRuntime.thread.append({
+                  role: 'user',
+                  content: [
+                    {
+                      type: 'text',
+                      text: '【本章导读雷达】请根据当前章节内容，提出3个能够激发阅读兴趣、值得深思的核心或者悬念问题，不要剧透。',
+                    },
+                  ],
+                });
+              }}
+              className='btn border-base-content/20 bg-base-100 hover:bg-base-200 text-base-content mb-6 shadow-sm btn-sm gap-2 rounded-full font-medium'
+            >
+              <Radar className='size-4 text-primary' />
+              提取本章导读雷达
+            </button>
+
+            <Composer onClear={onClear} onResetIndex={onResetIndex} />
           </div>
-          <h3 className='text-base-content mb-1 text-sm font-medium'>Ask about this book</h3>
-          <p className='text-base-content/60 mb-4 text-xs'>Get answers based on the book content</p>
+        )}
 
-          <button
-            type='button'
-            onClick={() => {
-              assistantRuntime.thread.append({
-                role: 'user',
-                content: [
-                  {
-                    type: 'text',
-                    text: '【本章导读雷达】请根据当前章节内容，提出3个能够激发阅读兴趣、值得深思的核心或者悬念问题，不要剧透。',
-                  },
-                ],
-              });
-            }}
-            className='btn border-base-content/20 bg-base-100 hover:bg-base-200 text-base-content mb-6 shadow-sm btn-sm gap-2 rounded-full font-medium'
+        <AssistantIf condition={(s) => s.thread.isEmpty === false}>
+          <div
+            className={cn(
+              'relative min-h-0 flex-1 transition-opacity duration-300',
+              showLoading ? 'opacity-0' : 'opacity-100',
+            )}
           >
-            <Radar className='size-4 text-primary' />
-            提取本章导读雷达
-          </button>
+            <ThreadPrimitive.Viewport
+              ref={viewportRef}
+              autoScroll={false}
+              className='absolute inset-0 flex flex-col overflow-y-auto scroll-smooth pt-2'
+            >
+              <ThreadPrimitive.Messages components={threadMessageComponents} />
+              <p className='text-base-content/40 mx-auto w-full p-1 text-center text-[10px]'>
+                AI can make mistakes. Verify with the book.
+              </p>
+              <div
+                className={cn('flex-shrink transition-all duration-300', getSpacerHeight())}
+                aria-hidden='true'
+              />
+            </ThreadPrimitive.Viewport>
+
+            <ScrollToBottomButton />
+          </div>
 
           <Composer onClear={onClear} onResetIndex={onResetIndex} />
-        </div>
-      )}
-
-      <AssistantIf condition={(s) => s.thread.isEmpty === false}>
-        <div
-          className={cn(
-            'relative min-h-0 flex-1 transition-opacity duration-300',
-            showLoading ? 'opacity-0' : 'opacity-100',
-          )}
-        >
-          <ThreadPrimitive.Viewport
-            ref={viewportRef}
-            autoScroll={false}
-            className='absolute inset-0 flex flex-col overflow-y-auto scroll-smooth pt-2'
-          >
-            <ThreadPrimitive.Messages
-              components={{
-                UserMessage,
-                EditComposer,
-                AssistantMessage: () => (
-                  <AssistantMessage
-                    sources={sources}
-                    onSourceClick={onSourceClick}
-                    fontSize={fontSize}
-                  />
-                ),
-              }}
-            />
-            <p className='text-base-content/40 mx-auto w-full p-1 text-center text-[10px]'>
-              AI can make mistakes. Verify with the book.
-            </p>
-            <div
-              className={cn('flex-shrink transition-all duration-300', getSpacerHeight())}
-              aria-hidden='true'
-            />
-          </ThreadPrimitive.Viewport>
-
-          <ScrollToBottomButton />
-        </div>
-
-        <Composer onClear={onClear} onResetIndex={onResetIndex} />
-      </AssistantIf>
-    </ThreadPrimitive.Root>
+        </AssistantIf>
+      </ThreadPrimitive.Root>
+    </AssistantMessageSlotContext.Provider>
   );
 };
 
@@ -352,6 +402,19 @@ interface AssistantMessageProps {
   fontSize?: number;
 }
 
+/**
+ * Module-level, memoized slot for `ThreadPrimitive.Messages.components.AssistantMessage`.
+ *
+ * MUST stay a stable reference (no inline arrow in the `components` object —
+ * see AssistantMessageSlotContext for the full rationale). Reads its
+ * per-thread props from context so it can stay a module-level component
+ * while still seeing current sources/fontSize.
+ */
+const AssistantMessageSlot: FC = memo(function AssistantMessageSlot() {
+  const { sources, onSourceClick, fontSize } = useContext(AssistantMessageSlotContext);
+  return <AssistantMessage sources={sources} onSourceClick={onSourceClick} fontSize={fontSize} />;
+});
+
 const AssistantMessage: FC<AssistantMessageProps> = ({
   sources = [],
   onSourceClick,
@@ -388,7 +451,7 @@ const AssistantMessage: FC<AssistantMessageProps> = ({
               } as React.CSSProperties
             }
           >
-            <MessagePrimitive.Parts components={{ Text: MarkdownText }} />
+            <MessagePrimitive.Parts components={MARKDOWN_PART_COMPONENTS} />
             <AssistantIf condition={(s) => s.message.status?.type === 'running'}>
               <div className='mt-3 flex items-center gap-2.5 text-primary/80'>
                 <RoseCurveLoader size={24} k={5} particleCount={8} />
@@ -491,7 +554,7 @@ const UserMessage: FC = () => {
       <div className='flex flex-col items-end'>
         <div className='border-base-content/10 bg-base-200 text-base-content relative max-w-[90%] rounded-2xl rounded-br-md border px-3 py-2'>
           <div className='prose prose-xs text-base-content [&_*]:!text-base-content select-text'>
-            <MessagePrimitive.Parts components={{ Text: MarkdownText }} />
+            <MessagePrimitive.Parts components={MARKDOWN_PART_COMPONENTS} />
           </div>
         </div>
         <div className='mt-0.5 flex h-6 items-center justify-end gap-0.5'>

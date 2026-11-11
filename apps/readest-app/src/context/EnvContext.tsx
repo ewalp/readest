@@ -59,3 +59,13 @@ export const useEnv = (): EnvContextType => {
   if (!context) throw new Error('useEnv must be used within EnvProvider');
   return context;
 };
+
+/**
+ * Like {@link useEnv} but returns null instead of throwing when there is no
+ * provider. For components that work fine without one (they just lose the
+ * capability the env unlocks) — e.g. a Mermaid diagram that can still render
+ * in-memory when no database is reachable.
+ */
+export const useOptionalEnv = (): EnvContextType | null => {
+  return useContext(EnvContext) ?? null;
+};

@@ -288,6 +288,34 @@ const migrations: Record<SchemaType, MigrationEntry[]> = {
         );
       `,
     },
+    {
+      // Rendered Mermaid diagrams, cached per book.
+      //
+      // A diagram's SVG is a pure function of its source text, so it only has
+      // to be rendered once — ever. The AI panel re-mounts message subtrees
+      // constantly (virtualization, thread switches, history reloads) and each
+      // mount would otherwise trigger a full mermaid.render(), which is both
+      // slow and visually blanks the diagram while the old SVG is swapped out.
+      //
+      // Storing this in reedy.db (rather than an in-memory cache) means it
+      // survives app restarts and lives exactly as long as the book's other
+      // AI data does. `code_hash` is a hash of the diagram source, so the same
+      // diagram appearing in several messages shares one row.
+      name: '2026111101_reedy_mermaid_svg',
+      sql: `
+        CREATE TABLE IF NOT EXISTS reedy_mermaid_svg (
+          book_hash TEXT NOT NULL,
+          code_hash TEXT NOT NULL,
+          svg TEXT NOT NULL,
+          created_at INTEGER NOT NULL,
+          last_used_at INTEGER NOT NULL,
+          PRIMARY KEY (book_hash, code_hash)
+        );
+
+        CREATE INDEX IF NOT EXISTS idx_mermaid_svg_book_used
+        ON reedy_mermaid_svg (book_hash, last_used_at DESC);
+      `,
+    },
   ],
 };
 

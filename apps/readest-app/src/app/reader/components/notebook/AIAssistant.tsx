@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback, useMemo, useRef, memo } from 'react';
-import { History, Plus, Trash2, ArrowLeft, MessageSquare, Pencil } from 'lucide-react';
+import { History, Plus, Trash2, ArrowLeft, MessageSquare, Pencil, FileDown } from 'lucide-react';
 import {
   AssistantRuntimeProvider,
   useLocalRuntime,
@@ -14,8 +14,10 @@ import { useTranslation } from '@/hooks/useTranslation';
 import { useSettingsStore } from '@/store/settingsStore';
 import { useBookDataStore } from '@/store/bookDataStore';
 import { useReaderStore } from '@/store/readerStore';
-import { useBookProgress } from '@/store/readerProgressStore';
+import { useBookProgress, getBookProgress } from '@/store/readerProgressStore';
 import { useAIChatStore } from '@/store/aiChatStore';
+import { eventDispatcher } from '@/utils/event';
+import { conversationToMarkdown, makeConversationFilename } from '@/utils/aiConversationExport';
 import {
   createTauriAdapter,
   cancelBackgroundStream,
@@ -166,10 +168,9 @@ const AIAssistantChat = memo(
   ({
     aiSettings,
     bookHash,
+    bookKey,
     bookTitle,
     authorName,
-    currentPage,
-    currentSectionIndex,
     promptMode,
     backend,
     sourceStore,
@@ -180,10 +181,9 @@ const AIAssistantChat = memo(
   }: {
     aiSettings: AISettings;
     bookHash: string;
+    bookKey: string;
     bookTitle: string;
     authorName: string;
-    currentPage: number;
-    currentSectionIndex: number;
     promptMode: PromptMode;
     backend: RetrievalBackend;
     sourceStore: ReedySourceStore;
@@ -200,8 +200,6 @@ const AIAssistantChat = memo(
       bookHash,
       bookTitle,
       authorName,
-      currentPage,
-      currentSectionIndex,
       promptMode,
       backend,
       sourceStore,
@@ -215,8 +213,6 @@ const AIAssistantChat = memo(
         bookHash,
         bookTitle,
         authorName,
-        currentPage,
-        currentSectionIndex,
         promptMode,
         backend,
         sourceStore,
@@ -226,9 +222,20 @@ const AIAssistantChat = memo(
 
     // create adapter ONCE and keep it stable
     const adapter = useMemo(() => {
+      // Reading position is resolved LAZILY at send time instead of arriving as
+      // a prop. A `currentPage` prop changed on every page turn, which
+      // re-rendered this whole panel (and previously every assistant message
+      // subtree, re-running mermaid.render) on every single turn of a page.
       // eslint-disable-next-line react-hooks/refs -- intentional: we read optionsRef inside a deferred callback, not during render
-      return createTauriAdapter(() => optionsRef.current);
-    }, []);
+      return createTauriAdapter(() => {
+        const progress = getBookProgress(bookKey);
+        return {
+          ...optionsRef.current,
+          currentPage: progress?.pageinfo?.current ?? 0,
+          currentSectionIndex: progress?.section?.current ?? 0,
+        };
+      });
+    }, [bookKey]);
 
     // Create history adapter to load/persist messages
     const historyAdapter = useMemo<ThreadHistoryAdapter>(() => {
@@ -456,17 +463,22 @@ const ThreadWrapper = ({
 };
 
 import { GlobalMermaidModal } from '@/components/assistant/GlobalMermaidModal';
+import { MermaidBookProvider } from '@/components/assistant/MermaidBookContext';
 
 const AIAssistant = ({ bookKey }: AIAssistantProps) => {
   const { appService } = useEnv();
-  const { settings } = useSettingsStore();
+  // Per-field selectors: a whole-store subscription here re-rendered the AI
+  // panel (and every assistant message subtree) on any settings write.
+  const aiEnabled = useSettingsStore((s) => s.settings?.aiSettings?.enabled);
+  const reedyEnabled = useSettingsStore((s) => s.settings?.aiSettings?.reedy?.enabled);
+  const reedyRuntimeSetting = useSettingsStore((s) => s.settings?.aiSettings?.reedy?.runtime);
   const getBookData = useBookDataStore((s) => s.getBookData);
   const bookData = getBookData(bookKey);
 
-  const reedyRuntime = settings?.aiSettings?.reedy?.runtime ?? 'mvp';
+  const reedyRuntime = reedyRuntimeSetting ?? 'mvp';
   const useAgentRuntime =
-    settings?.aiSettings?.enabled === true &&
-    settings?.aiSettings?.reedy?.enabled === true &&
+    aiEnabled === true &&
+    reedyEnabled === true &&
     reedyRuntime === 'agent' &&
     !!appService &&
     isTauriAppPlatform() &&
@@ -479,11 +491,13 @@ const AIAssistant = ({ bookKey }: AIAssistantProps) => {
 const LegacyAIAssistant = ({ bookKey }: AIAssistantProps) => {
   const _ = useTranslation();
   const { appService } = useEnv();
-  const { settings } = useSettingsStore();
+  // Per-field selector instead of a whole-store subscription: the store's
+  // identity changes on every write, which used to re-render the AI panel and
+  // every assistant message subtree along with it.
+  const settings = useSettingsStore((s) => s.settings);
   const getBookData = useBookDataStore((s) => s.getBookData);
   const getView = useReaderStore((s) => s.getView);
   const bookData = getBookData(bookKey);
-  const progress = useBookProgress(bookKey);
 
   const [_isLoading, setIsLoading] = useState(true);
   const [isIndexing, setIsIndexing] = useState(false);
@@ -506,8 +520,6 @@ const LegacyAIAssistant = ({ bookKey }: AIAssistantProps) => {
   const bookHash = bookKey.split('-')[0] || '';
   const bookTitle = bookData?.book?.title || 'Unknown';
   const authorName = bookData?.book?.author || '';
-  const currentPage = progress?.pageinfo?.current ?? 0;
-  const currentSectionIndex = progress?.section?.current ?? 0;
   const aiSettings = settings?.aiSettings;
 
   useEffect(() => {
@@ -624,118 +636,166 @@ const LegacyAIAssistant = ({ bookKey }: AIAssistantProps) => {
     setViewMode('chat');
   };
 
+  /**
+   * Export the active conversation as Markdown (Obsidian-compatible).
+   *
+   * Reads messages from the store at click time rather than from a subscribed
+   * value: subscribing to `messages` here would re-render this whole panel on
+   * every streamed token, which is exactly the churn we are trying to avoid.
+   */
+  const handleExportChat = async () => {
+    const { messages, conversations } = useAIChatStore.getState();
+    if (messages.length === 0) {
+      eventDispatcher.dispatch('toast', {
+        type: 'warning',
+        message: _('No messages to export yet'),
+        timeout: 2000,
+      });
+      return;
+    }
+
+    const conversation = conversations.find((c) => c.id === activeConversationId);
+    const markdown = conversationToMarkdown(messages, {
+      bookTitle,
+      bookAuthor: authorName || undefined,
+      conversationTitle: conversation?.title,
+      exportedAt: Date.now(),
+    });
+    const filename = makeConversationFilename(bookTitle, conversation?.title);
+
+    const saved = await appService?.saveFile(filename, markdown, {
+      mimeType: 'text/markdown',
+      share: true,
+    });
+
+    if (appService?.isMacOSApp) return;
+    eventDispatcher.dispatch('toast', {
+      type: saved ? 'info' : 'warning',
+      message: saved ? _('Exported successfully') : _('Copied to clipboard'),
+      timeout: 2000,
+    });
+  };
+
   if (!backend) return null;
 
   return (
-    <div className='bg-base-100 flex h-full flex-col'>
-      {(!indexed || isIndexing) && (
-        <div className='border-base-300 bg-base-200/50 flex items-center justify-between border-b px-4 py-2 text-sm'>
-          {!indexed && !isIndexing && (
-            <div className='flex w-full items-center justify-between'>
-              <span>Book not indexed for AI.</span>
-              <button
-                className='btn btn-primary btn-xs'
-                onClick={performIndexing}
-                disabled={!bookData?.bookDoc}
-              >
-                Start Indexing
-              </button>
-            </div>
-          )}
-
-          {isIndexing && (
-            <div className='flex w-full flex-col gap-2'>
-              <div className='flex items-center justify-between'>
-                <span>
-                  Indexing... {indexingPhase} ({indexProgress}%)
-                </span>
-                <button className='btn btn-ghost btn-xs text-error' onClick={cancelIndexing}>
-                  Cancel
+    <MermaidBookProvider bookHash={bookHash}>
+      <div className='bg-base-100 flex h-full flex-col'>
+        {(!indexed || isIndexing) && (
+          <div className='border-base-300 bg-base-200/50 flex items-center justify-between border-b px-4 py-2 text-sm'>
+            {!indexed && !isIndexing && (
+              <div className='flex w-full items-center justify-between'>
+                <span>Book not indexed for AI.</span>
+                <button
+                  className='btn btn-primary btn-xs'
+                  onClick={performIndexing}
+                  disabled={!bookData?.bookDoc}
+                >
+                  Start Indexing
                 </button>
               </div>
-              <progress
-                className='progress progress-primary w-full'
-                value={indexProgress}
-                max='100'
-              ></progress>
-            </div>
+            )}
+
+            {isIndexing && (
+              <div className='flex w-full flex-col gap-2'>
+                <div className='flex items-center justify-between'>
+                  <span>
+                    Indexing... {indexingPhase} ({indexProgress}%)
+                  </span>
+                  <button className='btn btn-ghost btn-xs text-error' onClick={cancelIndexing}>
+                    Cancel
+                  </button>
+                </div>
+                <progress
+                  className='progress progress-primary w-full'
+                  value={indexProgress}
+                  max='100'
+                ></progress>
+              </div>
+            )}
+          </div>
+        )}
+
+        <div className='relative flex flex-1 flex-col overflow-hidden'>
+          {viewMode === 'history' ? (
+            <ChatHistoryList
+              bookHash={bookHash}
+              onSelect={async (id) => {
+                cancelBackgroundStream();
+                await setActiveConversation(id);
+                setViewMode('chat');
+              }}
+              onClose={() => setViewMode('chat')}
+            />
+          ) : (
+            <>
+              <div className='border-base-200 bg-base-100 flex min-h-12 items-center justify-between border-b px-4 py-2'>
+                <span className='mr-2 flex flex-1 items-center gap-2 truncate text-sm font-semibold opacity-70'>
+                  <MessageSquare className='size-4 shrink-0' />
+                  <span className='truncate'>
+                    {conversations.find((c) => c.id === activeConversationId)?.title || 'New Chat'}
+                  </span>
+                </span>
+                <div className='flex shrink-0 items-center gap-2'>
+                  <select
+                    className='select select-bordered select-xs bg-base-200 w-28'
+                    value={promptMode}
+                    onChange={(e) => setPromptMode(e.target.value as PromptMode)}
+                    title='Cognitive Mode'
+                  >
+                    <option value='standard'>标准模式</option>
+                    <option value='knowledge'>百科问答</option>
+                    <option value='devil'>反方思辨</option>
+                    <option value='feynman'>费曼模式</option>
+                    <option value='radar'>雷达模式</option>
+                    <option value='discussion'>对抗讨论</option>
+                  </select>
+                  <button
+                    onClick={handleExportChat}
+                    className='btn btn-ghost btn-sm btn-square'
+                    title='导出为 Markdown（可在 Obsidian 打开）'
+                  >
+                    <FileDown className='size-4' />
+                  </button>
+                  <button
+                    onClick={() => setViewMode('history')}
+                    className='btn btn-ghost btn-sm btn-square'
+                    title='History'
+                  >
+                    <History className='size-4' />
+                  </button>
+                  <button
+                    onClick={handleNewChat}
+                    className='btn btn-ghost btn-sm btn-square'
+                    title='New Chat'
+                  >
+                    <Plus className='size-4' />
+                  </button>
+                </div>
+              </div>
+              <div className='relative flex-1 overflow-hidden'>
+                <AIAssistantChat
+                  key={`${bookHash}-${activeConversationId || 'new'}`}
+                  aiSettings={aiSettings}
+                  bookHash={bookHash}
+                  bookKey={bookKey}
+                  bookTitle={bookTitle}
+                  authorName={authorName}
+                  promptMode={promptMode}
+                  backend={backend}
+                  sourceStore={sourceStore}
+                  currentTurnId={currentTurnId}
+                  setCurrentTurnId={setCurrentTurnId}
+                  onSourceClick={handleSourceClick}
+                  onResetIndex={handleResetIndex}
+                />
+              </div>
+            </>
           )}
         </div>
-      )}
-
-      <div className='relative flex flex-1 flex-col overflow-hidden'>
-        {viewMode === 'history' ? (
-          <ChatHistoryList
-            bookHash={bookHash}
-            onSelect={async (id) => {
-              cancelBackgroundStream();
-              await setActiveConversation(id);
-              setViewMode('chat');
-            }}
-            onClose={() => setViewMode('chat')}
-          />
-        ) : (
-          <>
-            <div className='border-base-200 bg-base-100 flex min-h-12 items-center justify-between border-b px-4 py-2'>
-              <span className='mr-2 flex flex-1 items-center gap-2 truncate text-sm font-semibold opacity-70'>
-                <MessageSquare className='size-4 shrink-0' />
-                <span className='truncate'>
-                  {conversations.find((c) => c.id === activeConversationId)?.title || 'New Chat'}
-                </span>
-              </span>
-              <div className='flex shrink-0 items-center gap-2'>
-                <select
-                  className='select select-bordered select-xs bg-base-200 w-28'
-                  value={promptMode}
-                  onChange={(e) => setPromptMode(e.target.value as PromptMode)}
-                  title='Cognitive Mode'
-                >
-                  <option value='standard'>标准模式</option>
-                  <option value='knowledge'>百科问答</option>
-                  <option value='devil'>反方思辨</option>
-                  <option value='feynman'>费曼模式</option>
-                  <option value='radar'>雷达模式</option>
-                  <option value='discussion'>对抗讨论</option>
-                </select>
-                <button
-                  onClick={() => setViewMode('history')}
-                  className='btn btn-ghost btn-sm btn-square'
-                  title='History'
-                >
-                  <History className='size-4' />
-                </button>
-                <button
-                  onClick={handleNewChat}
-                  className='btn btn-ghost btn-sm btn-square'
-                  title='New Chat'
-                >
-                  <Plus className='size-4' />
-                </button>
-              </div>
-            </div>
-            <div className='relative flex-1 overflow-hidden'>
-              <AIAssistantChat
-                key={`${bookHash}-${activeConversationId || 'new'}`}
-                aiSettings={aiSettings}
-                bookHash={bookHash}
-                bookTitle={bookTitle}
-                authorName={authorName}
-                currentPage={currentPage}
-                currentSectionIndex={currentSectionIndex}
-                promptMode={promptMode}
-                backend={backend}
-                sourceStore={sourceStore}
-                currentTurnId={currentTurnId}
-                setCurrentTurnId={setCurrentTurnId}
-                onSourceClick={handleSourceClick}
-                onResetIndex={handleResetIndex}
-              />
-            </div>
-          </>
-        )}
+        <GlobalMermaidModal />
       </div>
-      <GlobalMermaidModal />
-    </div>
+    </MermaidBookProvider>
   );
 };
 
