@@ -38,6 +38,27 @@ tokio-util = { version = "0.7", features = ["codec"] }
 futures-util = "0.3"
 futures = "0.3.31"
 read-progress-stream = "1.0.0"
+# Upper bound on libc, deliberately NOT target-scoped. Cargo resolves a single
+# libc for the whole graph, so gating this to one target would leave the others
+# free to pick a bad version.
+#
+# libc >= 0.2.187 gated the Apple routing symbols that sysinfo uses
+# (`RTM_IFINFO2`, `if_msghdr2`, `NET_RT_IFLIST2`, and `proc_pidinfo` /
+# `PROC_PIDLISTFDS`) behind `cfg(target_os = "macos")`. That gating is correct -
+# those symbols are not in the iOS libc - but sysinfo 0.34.2's
+# `src/unix/apple/network.rs` and `ProcessInner::open_files` still reference
+# them unconditionally, so it fails to compile for aarch64-apple-ios:
+#   error[E0425]: cannot find value `RTM_IFINFO2` in crate `libc`
+#   error[E0425]: cannot find function `proc_pidinfo` in crate `libc`
+#
+# sysinfo arrives via tauri-plugin-device-info, which lists it as an
+# unconditional dependency even though only its `desktop` module uses it (the
+# iOS/Android paths are Swift/Kotlin). 0.34.2 is the newest release the plugin's
+# `sysinfo = "0.34.2"` requirement admits.
+#
+# Drop this bound once the plugin depends on a sysinfo that gates Apple-only
+# code behind `cfg(not(target_os = "ios"))`.
+libc = "0.2, <0.2.187"
 reqwest = { version = "0.12", default-features = false, features = [
   "json",
   "stream",
@@ -146,6 +167,3 @@ discord-rich-presence = "1.0.0"
 # Resolve the user's default browser from the registry for the cold-browser
 # OAuth-redirect fallback (see src/spawn_fresh_browser.rs).
 winreg = "0.52"
-
-[target.'cfg(target_os = "android")'.dependencies]
-libc = "0.2"
